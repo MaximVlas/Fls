@@ -1,0 +1,30 @@
+// file_viewer.fls
+// A simple program to view the contents of a text file.
+
+print "--- FLS File Viewer ---";
+
+// Ask the user for the path to a file.
+var path = input("Enter the path to a file to view: ");
+
+if (path == nil or path == "") {
+  print "No file path entered. Exiting.";
+} else {
+  print "---";
+  print "Attempting to read file: " + path;
+  print "---";
+
+  // Read the file from the disk using the native function.
+  var content = readFile(path);
+
+  // Check if the file was read successfully.
+  if (content == nil) {
+    print "Error: Could not open or read the file at that path.";
+    print "Please make sure the file exists and the path is correct.";
+  } else {
+    print "File content:";
+    print "====================================";
+    print content;
+    print "====================================";
+    print "End of file.";
+  }
+}
