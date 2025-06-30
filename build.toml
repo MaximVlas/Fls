@@ -1,0 +1,34 @@
+# Build configuration for the FLS language (Bytecode VM version)
+
+output_name = "fls.exe"
+
+# The source files required for the new, faster bytecode VM.
+sources = [
+    "src/main.c",
+    "src/memory.c",
+    "src/chunk.c",
+    "src/debug.c",
+    "src/value.c",
+    "src/object.c",
+    "src/table.c",
+    "src/lexer.c",
+    "src/compiler.c",
+    "src/vm.c",
+]
+
+include_dirs = [
+    "include",
+]
+
+# Build modes
+build_mode = "release"
+optimization_level = "Os"
+
+# Compiler and linker flags
+compiler_flags = [
+    "-Wall",
+    "-Wextra",
+]
+
+# Add these flags to see the bytecode and VM execution trace for debugging
+# debug_flags = ["-DDEBUG_PRINT_CODE", "-DDEBUG_TRACE_EXECUTION"]

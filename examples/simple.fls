@@ -1,0 +1,23 @@
+// Example to test functions.
+
+fun sayHi(first, last) {
+  print "Hi, " + first + " " + last + "!";
+}
+
+sayHi("Dear", "User");
+
+// ---
+
+fun fib(n) {
+  if (n < 2) {
+    return n;
+  }
+  return fib(n - 2) + fib(n - 1);
+}
+
+var start = clock();
+print "Fibonacci of 32 is:";
+print fib(32);
+var end = clock();
+print "Took:";
+print end - start;
