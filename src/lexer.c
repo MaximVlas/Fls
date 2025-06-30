@@ -19,7 +19,9 @@ void initLexer(const char* source) {
 }
 
 static bool isAlpha(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+    return (c >= 'a' && c <= 'z') ||
+           (c >= 'A' && c <= 'Z') ||
+            c == '_';
 }
 
 static bool isDigit(char c) {
@@ -84,6 +86,7 @@ static void skipWhitespace() {
                 break;
             case '/':
                 if (peekNext() == '/') {
+                    // A comment goes until the end of the line.
                     while (peek() != '\n' && !isAtEnd()) advance();
                 } else {
                     return;
@@ -95,11 +98,13 @@ static void skipWhitespace() {
     }
 }
 
-static TokenType checkKeyword(int start, int length, const char* rest, TokenType type) {
+static TokenType checkKeyword(int start, int length,
+    const char* rest, TokenType type) {
     if (lexer.current - lexer.start == start + length &&
         memcmp(lexer.start + start, rest, length) == 0) {
         return type;
     }
+
     return TOKEN_IDENTIFIER;
 }
 
@@ -134,6 +139,7 @@ static TokenType identifierType() {
         case 'v': return checkKeyword(1, 2, "ar", TOKEN_VAR);
         case 'w': return checkKeyword(1, 4, "hile", TOKEN_WHILE);
     }
+
     return TOKEN_IDENTIFIER;
 }
 
@@ -144,10 +150,15 @@ static Token identifier() {
 
 static Token number() {
     while (isDigit(peek())) advance();
+
+    // Look for a fractional part.
     if (peek() == '.' && isDigit(peekNext())) {
+        // Consume the ".".
         advance();
+
         while (isDigit(peek())) advance();
     }
+
     return makeToken(TOKEN_NUMBER);
 }
 
@@ -156,7 +167,10 @@ static Token string() {
         if (peek() == '\n') lexer.line++;
         advance();
     }
+
     if (isAtEnd()) return errorToken("Unterminated string.");
+
+    // The closing quote.
     advance();
     return makeToken(TOKEN_STRING);
 }
@@ -164,6 +178,7 @@ static Token string() {
 Token scanToken() {
     skipWhitespace();
     lexer.start = lexer.current;
+
     if (isAtEnd()) return makeToken(TOKEN_EOF);
 
     char c = advance();
@@ -182,10 +197,19 @@ Token scanToken() {
         case '+': return makeToken(TOKEN_PLUS);
         case '/': return makeToken(TOKEN_SLASH);
         case '*': return makeToken(TOKEN_STAR);
-        case '!': return makeToken(match('=') ? TOKEN_BANG_EQUAL : TOKEN_BANG);
-        case '=': return makeToken(match('=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
-        case '<': return makeToken(match('=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
-        case '>': return makeToken(match('=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER);
+        case '%': return makeToken(TOKEN_PERCENT);
+        case '!':
+            return makeToken(
+                match('=') ? TOKEN_BANG_EQUAL : TOKEN_BANG);
+        case '=':
+            return makeToken(
+                match('=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
+        case '<':
+            return makeToken(
+                match('=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
+        case '>':
+            return makeToken(
+                match('=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER);
         case '"': return string();
     }
 

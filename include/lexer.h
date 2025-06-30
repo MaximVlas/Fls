@@ -1,12 +1,14 @@
-#ifndef FLS_LEXER_H
-#define FLS_LEXER_H
+#ifndef clox_lexer_h
+#define clox_lexer_h
+
+#include "common.h"
 
 typedef enum {
     // Single-character tokens.
     TOKEN_LPAREN, TOKEN_RPAREN,
     TOKEN_LBRACE, TOKEN_RBRACE,
     TOKEN_COMMA, TOKEN_DOT, TOKEN_MINUS, TOKEN_PLUS,
-    TOKEN_SEMICOLON, TOKEN_SLASH, TOKEN_STAR,
+    TOKEN_SEMICOLON, TOKEN_SLASH, TOKEN_STAR, TOKEN_PERCENT,
 
     // One or two character tokens.
     TOKEN_BANG, TOKEN_BANG_EQUAL,
@@ -23,8 +25,7 @@ typedef enum {
     TOKEN_PRINT, TOKEN_RETURN, TOKEN_SUPER, TOKEN_THIS,
     TOKEN_TRUE, TOKEN_VAR, TOKEN_WHILE,
 
-    TOKEN_ERROR,
-    TOKEN_EOF
+    TOKEN_ERROR, TOKEN_EOF
 } TokenType;
 
 typedef struct {
@@ -34,8 +35,7 @@ typedef struct {
     int line;
 } Token;
 
-// The lexer is now a self-contained module.
 void initLexer(const char* source);
 Token scanToken();
 
-#endif //FLS_LEXER_H
+#endif
