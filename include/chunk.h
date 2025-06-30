@@ -1,15 +1,18 @@
-#ifndef FLS_CHUNK_H
-#define FLS_CHUNK_H
+#ifndef clox_chunk_h
+#define clox_chunk_h
 
 #include "common.h"
 #include "value.h"
 
+// Opcodes for the virtual machine.
 typedef enum {
     OP_CONSTANT,
     OP_NIL,
     OP_TRUE,
     OP_FALSE,
     OP_POP,
+    OP_GET_LOCAL,
+    OP_SET_LOCAL,
     OP_GET_GLOBAL,
     OP_DEFINE_GLOBAL,
     OP_SET_GLOBAL,
@@ -23,9 +26,14 @@ typedef enum {
     OP_NOT,
     OP_NEGATE,
     OP_PRINT,
+    OP_JUMP,
+    OP_JUMP_IF_FALSE,
+    OP_LOOP,
+    OP_CALL,
     OP_RETURN,
 } OpCode;
 
+// A chunk of bytecode.
 typedef struct {
     int count;
     int capacity;
@@ -39,4 +47,4 @@ void freeChunk(Chunk* chunk);
 void writeChunk(Chunk* chunk, uint8_t byte, int line);
 int addConstant(Chunk* chunk, Value value);
 
-#endif // FLS_CHUNK_H
+#endif

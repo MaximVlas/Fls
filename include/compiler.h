@@ -1,10 +1,10 @@
-#ifndef FLS_COMPILER_H
-#define FLS_COMPILER_H
+#ifndef clox_compiler_h
+#define clox_compiler_h
 
+#include "object.h"
 #include "vm.h"
 
-// The main entry point for the compiler. It takes source code and compiles
-// it into a chunk of bytecode. Returns true on success.
-bool compile(const char* source, Chunk* chunk);
+// Compiles source code and returns the top-level function, or NULL on error.
+ObjFunction* compile(const char* source);
 
-#endif // FLS_COMPILER_H
+#endif

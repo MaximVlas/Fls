@@ -1,12 +1,13 @@
-#ifndef FLS_COMMON_H
-#define FLS_COMMON_H
+#ifndef clox_common_h
+#define clox_common_h
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-// This file contains common definitions and includes that are used
-// across the entire project. It helps to avoid circular dependencies
-// and keeps the codebase clean.
+#define UINT8_COUNT (UINT8_MAX + 1)
 
-#endif // FLS_COMMON_H
+// #define DEBUG_TRACE_EXECUTION
+// #define DEBUG_PRINT_CODE
+
+#endif
