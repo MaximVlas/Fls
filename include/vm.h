@@ -26,6 +26,9 @@ typedef struct {
     Table globals;
     Table strings;
     Obj* objects;
+    bool hadError;
+    size_t bytesAllocated;
+    size_t nextGC;
 } VM;
 
 typedef enum {
@@ -41,5 +44,8 @@ void freeVM();
 InterpretResult interpret(const char* source);
 void push(Value value);
 Value pop();
+void runtimeError(const char* format, ...);
+void defineNative(const char* name, NativeFn function);
+void defineGlobal(const char* name, Value value);
 
 #endif

@@ -260,6 +260,8 @@ static void endScope() {
 static void expression();
 static void statement();
 static void declaration();
+static void list(bool canAssign);
+static void subscript(bool canAssign);
 static ParseRule* getRule(TokenType type);
 static void parsePrecedence(Precedence precedence);
 
@@ -304,6 +306,29 @@ static uint8_t argumentList() {
 static void call(bool canAssign) {
     uint8_t argCount = argumentList();
     emitBytes(OP_CALL, argCount);
+}
+
+static void list(bool canAssign) {
+    emitByte(OP_NEW_LIST);
+    if (!check(TOKEN_RBRACKET)) {
+        do {
+            expression();
+            emitByte(OP_LIST_APPEND);
+        } while (match(TOKEN_COMMA));
+    }
+    consume(TOKEN_RBRACKET, "Expect ']' after list literal.");
+}
+
+static void subscript(bool canAssign) {
+  expression();
+  consume(TOKEN_RBRACKET, "Expect ']' after subscript.");
+
+  if (canAssign && match(TOKEN_EQUAL)) {
+    expression();
+    emitByte(OP_SET_SUBSCRIPT);
+  } else {
+    emitByte(OP_GET_SUBSCRIPT);
+  }
 }
 
 // Parses a literal value (false, nil, true, number).
@@ -482,6 +507,7 @@ static void and_(bool canAssign) {
 // The table of parsing rules.
 ParseRule rules[] = {
     [TOKEN_LPAREN]        = {grouping, call,   PREC_CALL},
+    [TOKEN_LBRACKET]      = {list,     subscript,   PREC_CALL},
     [TOKEN_RPAREN]        = {NULL,     NULL,   PREC_NONE},
     [TOKEN_LBRACE]        = {NULL,     NULL,   PREC_NONE},
     [TOKEN_RBRACE]        = {NULL,     NULL,   PREC_NONE},
@@ -686,11 +712,7 @@ static void ifStatement() {
 }
 
 // Parses a print statement.
-static void printStatement() {
-    expression();
-    consume(TOKEN_SEMICOLON, "Expect ';' after value.");
-    emitByte(OP_PRINT);
-}
+
 
 // Parses a return statement.
 static void returnStatement() {
@@ -750,9 +772,7 @@ static void synchronize() {
 
 // Parses a statement.
 static void statement() {
-    if (match(TOKEN_PRINT)) {
-        printStatement();
-    } else if (match(TOKEN_FOR)) {
+    if (match(TOKEN_FOR)) {
         forStatement();
     } else if (match(TOKEN_IF)) {
         ifStatement();

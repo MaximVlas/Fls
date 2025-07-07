@@ -1,9 +1,25 @@
+#define _GNU_SOURCE  // For math functions
 #include <math.h>
 #include <stdarg.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+// Declare fmod function
+double fmod(double x, double y);
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
+#include <sys/time.h>
+#include <sys/stat.h>
+#if defined(_WIN32)
+#include <direct.h>
+#endif
 #include <time.h>
+#include <ctype.h>
+#include <limits.h>
+#include <pthread.h>
+#include <unistd.h>
 
 #include "common.h"
 #include "compiler.h"
@@ -11,11 +27,256 @@
 #include "memory.h"
 #include "object.h"
 #include "vm.h"
+#include "../std/include/io.h"
+#include "math.h"  // Our custom math.h
+
+// Native 'len' function: returns the length of a string.
+static Value stringLengthNative(int argCount, Value* args) {
+  if (argCount != 1) {
+    runtimeError("len() takes exactly 1 argument (%d given).", argCount);
+    return NIL_VAL;
+  }
+
+  if (!IS_STRING(args[0])) {
+    runtimeError("len() argument must be a string.");
+    return NIL_VAL;
+  }
+
+  ObjString* string = AS_STRING(args[0]);
+  return NUMBER_VAL(string->length);
+}
+
+// Native 'toString' function: converts a number to a string.
+static Value toStringNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("toString() takes exactly 1 argument (%d given).", argCount);
+        return NIL_VAL;
+    }
+
+    if (IS_BOOL(args[0])) {
+        return OBJ_VAL(copyString(AS_BOOL(args[0]) ? "true" : "false", AS_BOOL(args[0]) ? 4 : 5));
+    } else if (IS_NIL(args[0])) {
+        return OBJ_VAL(copyString("nil", 3));
+    } else if (IS_NUMBER(args[0])) {
+        double number = AS_NUMBER(args[0]);
+        char buffer[64];
+        int length = snprintf(buffer, sizeof(buffer), "%.15g", number);
+        return OBJ_VAL(copyString(buffer, length));
+    } else if (IS_STRING(args[0])) {
+        return args[0];
+    } else {
+        runtimeError("toString() argument must be a number, bool, nil, or string.");
+        return NIL_VAL;
+    }
+}
+
+// Native 'lines' function: counts the number of lines in a string.
+static Value countLinesNative(int argCount, Value* args) {
+  if (argCount != 1) {
+    runtimeError("lines() takes exactly 1 argument (%d given).", argCount);
+    return NIL_VAL;
+  }
+
+  if (!IS_STRING(args[0])) {
+    runtimeError("lines() argument must be a string.");
+    return NIL_VAL;
+  }
+
+  ObjString* string = AS_STRING(args[0]);
+  if (string->length == 0) {
+    return NUMBER_VAL(0);
+  }
+
+  int line_count = 1;
+  for (int i = 0; i < string->length; i++) {
+    if (string->chars[i] == '\n') {
+      line_count++;
+    }
+  }
+
+  // A file ending with a newline shouldn't count the empty line after it.
+  if (string->chars[string->length - 1] == '\n') {
+    line_count--;
+  }
+
+  return NUMBER_VAL(line_count);
+}
+
+// Native 'listLen' function: returns the length of a list.
+static Value listLenNative(int argCount, Value* args) {
+  if (argCount != 1) {
+    runtimeError("listLen() takes exactly 1 argument (%d given).", argCount);
+    return NIL_VAL;
+  }
+
+  if (!IS_LIST(args[0])) {
+    runtimeError("listLen() argument must be a list.");
+    return NIL_VAL;
+  }
+
+  ObjList* list = AS_LIST(args[0]);
+  return NUMBER_VAL(list->items->count);
+}
+
+// Native 'listGet' function: returns the item at a given index in a list.
+static Value listGetNative(int argCount, Value* args) {
+  if (argCount != 2) {
+    runtimeError("listGet() takes exactly 2 arguments (%d given).", argCount);
+    return NIL_VAL;
+  }
+
+  if (!IS_LIST(args[0])) {
+    runtimeError("listGet() first argument must be a list.");
+    return NIL_VAL;
+  }
+
+  if (!IS_NUMBER(args[1])) {
+    runtimeError("listGet() second argument must be a number (index).");
+    return NIL_VAL;
+  }
+
+  ObjList* list = AS_LIST(args[0]);
+  int index = AS_NUMBER(args[1]);
+
+  if (index < 0 || index >= list->items->count) {
+    runtimeError("listGet() index out of bounds.");
+    return NIL_VAL;
+  }
+
+  return list->items->values[index];
+}
+
+// Native 'endsWith' function: checks if a string ends with a given suffix.
+static Value endsWithNative(int argCount, Value* args) {
+  if (argCount != 2) {
+    runtimeError("endsWith() takes exactly 2 arguments (%d given).", argCount);
+    return NIL_VAL;
+  }
+
+  if (!IS_STRING(args[0]) || !IS_STRING(args[1])) {
+    runtimeError("endsWith() arguments must be strings.");
+    return NIL_VAL;
+  }
+
+  ObjString* string = AS_STRING(args[0]);
+  ObjString* suffix = AS_STRING(args[1]);
+
+  if (suffix->length > string->length) {
+    return BOOL_VAL(false);
+  }
+
+  return BOOL_VAL(memcmp(string->chars + string->length - suffix->length, 
+                         suffix->chars, suffix->length) == 0);
+}
+
+// Native 'toNum' function: converts a string to a number.
+static Value toNumNative(int argCount, Value* args) {
+  if (argCount != 1) {
+    runtimeError("toNum() takes exactly 1 argument (%d given).", argCount);
+    return NIL_VAL;
+  }
+
+  if (!IS_STRING(args[0])) {
+    runtimeError("toNum() argument must be a string.");
+    return NIL_VAL;
+  }
+
+  ObjString* string = AS_STRING(args[0]);
+  char* end; // To check for conversion errors
+  double number = strtod(string->chars, &end);
+
+  // Check if the entire string was converted
+  if (*end != '\0') {
+    // You could return NIL or error out if the string is not a valid number
+    return NIL_VAL;
+  }
+
+  return NUMBER_VAL(number);
+}
+
+static Value mapNative(int argCount, Value* args) {
+    if (argCount != 0) {
+        runtimeError("map() takes no arguments (%d given).", argCount);
+        return NIL_VAL;
+    }
+    return OBJ_VAL(newMap());
+}
+
+static Value mapSetNative(int argCount, Value* args) {
+    if (argCount != 3) {
+        runtimeError("mapSet() takes 3 arguments: map, key, value (%d given).", argCount);
+        return NIL_VAL;
+    }
+    if (!IS_MAP(args[0])) {
+        runtimeError("First argument to mapSet() must be a map.");
+        return NIL_VAL;
+    }
+    if (!IS_STRING(args[1])) {
+        runtimeError("Second argument (key) to mapSet() must be a string.");
+        return NIL_VAL;
+    }
+
+    ObjMap* map = AS_MAP(args[0]);
+    ObjString* key = AS_STRING(args[1]);
+    Value value = args[2];
+
+    tableSet(&map->table, key, value);
+    return value;
+}
+
+static Value mapGetNative(int argCount, Value* args) {
+    if (argCount != 2) {
+        runtimeError("mapGet() takes 2 arguments: map, key (%d given).", argCount);
+        return NIL_VAL;
+    }
+    if (!IS_MAP(args[0])) {
+        runtimeError("First argument to mapGet() must be a map.");
+        return NIL_VAL;
+    }
+    if (!IS_STRING(args[1])) {
+        runtimeError("Second argument (key) to mapGet() must be a string.");
+        return NIL_VAL;
+    }
+
+    ObjMap* map = AS_MAP(args[0]);
+    ObjString* key = AS_STRING(args[1]);
+    Value value;
+
+    if (!tableGet(&map->table, key, &value)) {
+        return NIL_VAL;
+    }
+
+    return value;
+}
+
+static Value mapDeleteNative(int argCount, Value* args) {
+    if (argCount != 2) {
+        runtimeError("mapDelete() takes 2 arguments: map, key (%d given).", argCount);
+        return NIL_VAL;
+    }
+    if (!IS_MAP(args[0])) {
+        runtimeError("First argument to mapDelete() must be a map.");
+        return NIL_VAL;
+    }
+    if (!IS_STRING(args[1])) {
+        runtimeError("Second argument (key) to mapDelete() must be a string.");
+        return NIL_VAL;
+    }
+
+    ObjMap* map = AS_MAP(args[0]);
+    ObjString* key = AS_STRING(args[1]);
+
+    if (tableDelete(&map->table, key)) {
+        return BOOL_VAL(true);
+    }
+
+    return BOOL_VAL(false);
+}
 
 VM vm;
 
 // Forward declaration for the runtime error function.
-static void runtimeError(const char* format, ...);
+
 
 
 // --- Native C Functions ---
@@ -59,6 +320,137 @@ static Value inputNative(int argCount, Value* args) {
   return OBJ_VAL(copyString(buffer, strlen(buffer)));
 }
 
+
+
+// Helper function to recursively walk a directory.
+static void walk(const char* dir, ObjList* list) {
+    struct dirent* dp;
+    DIR* dfd = opendir(dir);
+    if (dfd == NULL) {
+        return;
+    }
+
+    while ((dp = readdir(dfd)) != NULL) {
+        if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0 || dp->d_name[0] == '.') {
+            continue;
+        }
+
+        char path[1024];
+        snprintf(path, sizeof(path), "%s/%s", dir, dp->d_name);
+
+        struct stat st;
+        if (stat(path, &st) == -1) {
+            continue; // Can't stat file, skip.
+        }
+
+        if (S_ISDIR(st.st_mode)) {
+            walk(path, list);
+        } else {
+            Value pathValue = OBJ_VAL(copyString(path, strlen(path)));
+            writeValueArray(list->items, pathValue);
+        }
+    }
+    closedir(dfd);
+}
+
+// --- High-performance Multi-threaded Code Analyzer (w/ Exclusions) ---
+
+#define MAX_THREADS 128
+#define QUEUE_CAPACITY 4096
+
+// --- Data Structures for Threading ---
+typedef enum {
+    LOG_NONE,
+    LOG_MINIMAL,
+    LOG_VERBOSE
+} LogLevel;
+
+typedef struct {
+    char* path;
+} Task;
+
+typedef struct {
+    Task* tasks[QUEUE_CAPACITY];
+    int front, rear, count;
+    pthread_mutex_t mutex;
+    pthread_cond_t not_empty, not_full;
+    bool finished_adding;
+} TaskQueue;
+
+// Per-thread result, no locking needed during analysis
+typedef struct {
+    long long files_processed;
+    long long total_lines;
+    long long total_chars;
+} ThreadResult;
+
+typedef struct {
+    pthread_t thread_id;
+    int thread_idx;
+    TaskQueue* queue;
+    ObjList* extensions;
+    ThreadResult result; // Each thread has its own result
+    LogLevel logLevel;
+} ThreadData;
+
+// --- Forward Declarations ---
+static void* worker(void* arg);
+static bool hasValidExtension(const char* filename, ObjList* extensions);
+static void walkAndSubmitTasks(const char* dir, TaskQueue* queue, ObjList* extensions, int depth, LogLevel logLevel, ObjList* excluded_dirs);
+
+// --- Task Queue Implementation ---
+static void queue_init(TaskQueue* q) {
+    q->front = 0;
+    q->rear = 0;
+    q->count = 0;
+    q->finished_adding = false;
+    pthread_mutex_init(&q->mutex, NULL);
+    pthread_cond_init(&q->not_empty, NULL);
+    pthread_cond_init(&q->not_full, NULL);
+}
+
+static void queue_destroy(TaskQueue* q) {
+    while (q->count > 0) {
+        Task* task = q->tasks[q->front];
+        free(task->path);
+        free(task);
+        q->front = (q->front + 1) % QUEUE_CAPACITY;
+        q->count--;
+    }
+    pthread_mutex_destroy(&q->mutex);
+    pthread_cond_destroy(&q->not_empty);
+    pthread_cond_destroy(&q->not_full);
+}
+
+static void queue_push(TaskQueue* q, Task* task) {
+    pthread_mutex_lock(&q->mutex);
+    while (q->count == QUEUE_CAPACITY) {
+        pthread_cond_wait(&q->not_full, &q->mutex);
+    }
+    q->tasks[q->rear] = task;
+    q->rear = (q->rear + 1) % QUEUE_CAPACITY;
+    q->count++;
+    pthread_cond_signal(&q->not_empty);
+    pthread_mutex_unlock(&q->mutex);
+}
+
+static Task* queue_pop(TaskQueue* q) {
+    pthread_mutex_lock(&q->mutex);
+    while (q->count == 0 && !q->finished_adding) {
+        pthread_cond_wait(&q->not_empty, &q->mutex);
+    }
+    if (q->count == 0) { // Must be finished adding
+        pthread_mutex_unlock(&q->mutex);
+        return NULL;
+    }
+    Task* task = q->tasks[q->front];
+    q->front = (q->front + 1) % QUEUE_CAPACITY;
+    q->count--;
+    pthread_cond_signal(&q->not_full);
+    pthread_mutex_unlock(&q->mutex);
+    return task;
+}
+
 // Helper to read a file from disk into a string.
 static char* readFileHelper(const char* path) {
   FILE* file = fopen(path, "rb");
@@ -87,27 +479,290 @@ static char* readFileHelper(const char* path) {
   return buffer;
 }
 
+// --- File Analysis Logic for Workers ---
+static pthread_mutex_t print_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// Native 'readFile' function: takes a file path and returns its contents.
-static Value readFileNative(int argCount, Value* args) {
+static void analyzeFileForWorker(const char* path, ThreadResult* result, LogLevel logLevel) {
+    if (logLevel == LOG_VERBOSE) {
+        pthread_mutex_lock(&print_mutex);
+        printf("    -> Analyzing: %s\n", path);
+        fflush(stdout);
+        pthread_mutex_unlock(&print_mutex);
+    }
+
+    char* source = readFileHelper(path);
+    if (source == NULL) return;
+
+    size_t len = strlen(source);
+    int line_count = (len > 0) ? 1 : 0;
+    for (size_t i = 0; i < len; i++) {
+        if (source[i] == '\n') line_count++;
+    }
+    if (len > 0 && source[len - 1] == '\n') line_count--;
+
+    result->files_processed++;
+    result->total_lines += line_count;
+    result->total_chars += len;
+
+    free(source);
+}
+
+// --- Thread Pool Worker and Directory Walker ---
+static void* worker(void* arg) {
+    ThreadData* data = (ThreadData*)arg;
+    LogLevel logLevel = data->logLevel;
+    while (true) {
+        Task* task = queue_pop(data->queue);
+        if (task == NULL) break;
+        analyzeFileForWorker(task->path, &data->result, logLevel);
+        free(task->path);
+        free(task);
+    }
+    return NULL;
+}
+
+static bool isPathExcluded(const char* path, ObjList* excluded_dirs) {
+    if (excluded_dirs == NULL) return false;
+    for (int i = 0; i < excluded_dirs->items->count; i++) {
+        Value excluded_val = excluded_dirs->items->values[i];
+        if (IS_STRING(excluded_val)) {
+            const char* excluded_path = AS_CSTRING(excluded_val);
+            size_t excluded_len = strlen(excluded_path);
+            if (strncmp(path, excluded_path, excluded_len) == 0) {
+                // Ensure it's a full path match or a directory prefix match
+                if (path[excluded_len] == '\0' || path[excluded_len] == '/') {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+static void walkAndSubmitTasks(const char* dir, TaskQueue* queue, ObjList* extensions, int depth, LogLevel logLevel, ObjList* excluded_dirs) {
+    if (isPathExcluded(dir, excluded_dirs)) {
+        if (logLevel >= LOG_MINIMAL) {
+            printf("   -> Skipping excluded directory: %s\n", dir);
+            fflush(stdout);
+        }
+        return;
+    }
+
+    if (logLevel >= LOG_MINIMAL && depth < 3) {
+        char indent[10] = {0};
+        for(int i=0; i<depth; ++i) strcat(indent, "  ");
+        printf("%s-> Scanning %s...\n", indent, dir);
+        fflush(stdout);
+    }
+
+    struct dirent* dp;
+    DIR* dfd = opendir(dir);
+    if (dfd == NULL) return;
+
+    while ((dp = readdir(dfd)) != NULL) {
+        if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0 || dp->d_name[0] == '.') continue;
+
+        char path[PATH_MAX];
+        if (snprintf(path, sizeof(path), "%s/%s", dir, dp->d_name) >= (int)sizeof(path)) continue;
+
+        struct stat st;
+        if (stat(path, &st) == -1) continue;
+
+        if (S_ISDIR(st.st_mode)) {
+            walkAndSubmitTasks(path, queue, extensions, depth + 1, logLevel, excluded_dirs);
+        } else {
+            if (hasValidExtension(path, extensions)) {
+                Task* task = (Task*)malloc(sizeof(Task));
+                task->path = strdup(path);
+                queue_push(queue, task);
+            }
+        }
+    }
+    closedir(dfd);
+}
+
+// --- Native 'analyze' function (multi-threaded, with exclusions) ---
+// --- Filesystem Native Functions ---
+
+static Value listDirNative(int argCount, Value* args) {
+}
+
+static Value systemNative(int argCount, Value* args) {
     if (argCount != 1) {
-        runtimeError("readFile() takes exactly 1 argument (%d given).", argCount);
+        runtimeError("system() takes exactly 1 argument (%d given).", argCount);
         return NIL_VAL;
     }
     if (!IS_STRING(args[0])) {
-        runtimeError("readFile() argument must be a string path.");
+        runtimeError("system() argument must be a string command.");
         return NIL_VAL;
     }
 
-    char* path = AS_CSTRING(args[0]);
-    char* source = readFileHelper(path);
-
-    if (source == NULL) {
+    char* command = AS_CSTRING(args[0]);
+    FILE* pipe = popen(command, "r");
+    if (!pipe) {
+        runtimeError("Failed to execute command: %s", command);
         return NIL_VAL;
     }
 
-    return OBJ_VAL(takeString(source, strlen(source)));
+    size_t buffer_capacity = 4096;
+    char* result = malloc(buffer_capacity);
+    if (result == NULL) {
+        pclose(pipe);
+        runtimeError("Memory allocation failed for system() output.");
+        return NIL_VAL;
+    }
+    result[0] = '\0';
+    size_t total_size = 0;
+
+    char buffer[256];
+    while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
+        size_t chunk_len = strlen(buffer);
+        if (total_size + chunk_len + 1 > buffer_capacity) {
+            buffer_capacity *= 2;
+            char* new_result = realloc(result, buffer_capacity);
+            if (new_result == NULL) {
+                free(result);
+                pclose(pipe);
+                runtimeError("Memory reallocation failed for system() output.");
+                return NIL_VAL;
+            }
+            result = new_result;
+        }
+        strcat(result, buffer);
+        total_size += chunk_len;
+    }
+
+    pclose(pipe);
+
+    ObjString* output = copyString(result, total_size);
+    free(result);
+    return OBJ_VAL(output);
 }
+
+static Value analyzeNative(int argCount, Value* args) {
+    if (argCount < 2 || argCount > 4) {
+        runtimeError("analyze() takes 2-4 arguments (root_dir, extensions, [log_level], [excluded_dirs]).");
+        return NIL_VAL;
+    }
+    if (!IS_STRING(args[0])) {
+        runtimeError("First argument must be a string (root_dir).");
+        return NIL_VAL;
+    }
+    if (!IS_LIST(args[1])) {
+        runtimeError("Second argument must be a list (extensions_list).");
+        return NIL_VAL;
+    }
+
+    LogLevel logLevel = LOG_MINIMAL;
+    if (argCount >= 3) {
+        if (!IS_STRING(args[2])) {
+            runtimeError("Third argument (log_level) must be a string.");
+            return NIL_VAL;
+        }
+        char* levelStr = AS_CSTRING(args[2]);
+        if (strcmp(levelStr, "none") == 0) logLevel = LOG_NONE;
+        else if (strcmp(levelStr, "minimal") == 0) logLevel = LOG_MINIMAL;
+        else if (strcmp(levelStr, "verbose") == 0) logLevel = LOG_VERBOSE;
+        else {
+            runtimeError("Invalid log level. Use 'none', 'minimal', or 'verbose'.");
+            return NIL_VAL;
+        }
+    }
+
+    ObjList* excluded_dirs = NULL;
+    if (argCount == 4) {
+        if (!IS_LIST(args[3])) {
+            runtimeError("Fourth argument (excluded_dirs) must be a list.");
+            return NIL_VAL;
+        }
+        excluded_dirs = AS_LIST(args[3]);
+    }
+
+    char* rootDir = AS_CSTRING(args[0]);
+    ObjList* extensions = AS_LIST(args[1]);
+
+    int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
+    if (num_cores <= 0) num_cores = 2;
+    if (num_cores > MAX_THREADS) num_cores = MAX_THREADS;
+
+    TaskQueue queue;
+    queue_init(&queue);
+
+    ThreadData thread_data[MAX_THREADS];
+
+    for (int i = 0; i < num_cores; i++) {
+        thread_data[i].thread_idx = i;
+        thread_data[i].queue = &queue;
+        thread_data[i].extensions = extensions;
+        thread_data[i].result = (ThreadResult){0, 0, 0};
+        thread_data[i].logLevel = logLevel;
+        pthread_create(&thread_data[i].thread_id, NULL, worker, &thread_data[i]);
+    }
+
+    walkAndSubmitTasks(rootDir, &queue, extensions, 0, logLevel, excluded_dirs);
+
+    pthread_mutex_lock(&queue.mutex);
+    queue.finished_adding = true;
+    pthread_cond_broadcast(&queue.not_empty);
+    pthread_mutex_unlock(&queue.mutex);
+
+    long long total_files = 0, total_lines = 0, total_chars = 0;
+    for (int i = 0; i < num_cores; i++) {
+        pthread_join(thread_data[i].thread_id, NULL);
+        total_files += thread_data[i].result.files_processed;
+        total_lines += thread_data[i].result.total_lines;
+        total_chars += thread_data[i].result.total_chars;
+    }
+
+    queue_destroy(&queue);
+
+    ObjList* resultList = newList();
+    push(OBJ_VAL(resultList));
+    writeValueArray(resultList->items, NUMBER_VAL((double)total_files));
+    writeValueArray(resultList->items, NUMBER_VAL((double)total_lines));
+    writeValueArray(resultList->items, NUMBER_VAL((double)total_chars));
+    pop();
+    return OBJ_VAL(resultList);
+}
+
+// Helper to check if a file has a valid extension.
+static bool hasValidExtension(const char* filename, ObjList* extensions) {
+    const char* dot = strrchr(filename, '.');
+    if (!dot || dot == filename) return false;
+
+    for (int i = 0; i < extensions->items->count; i++) {
+        Value extValue = extensions->items->values[i];
+        if (!IS_STRING(extValue)) continue;
+        ObjString* ext = AS_STRING(extValue);
+        if (strcmp(dot, ext->chars) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static Value walkDirNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("walkDir() takes exactly 1 argument (%d given).", argCount);
+        return NIL_VAL;
+    }
+    if (!IS_STRING(args[0])) {
+        runtimeError("walkDir() argument must be a string path.");
+        return NIL_VAL;
+    }
+
+    char* rootDir = AS_CSTRING(args[0]);
+    ObjList* list = newList();
+
+    // We need to push the list onto the stack here to protect it from GC
+    // in case copyString() inside walk() triggers a collection.
+    push(OBJ_VAL(list));
+    walk(rootDir, list);
+    pop();
+
+    return OBJ_VAL(list);
+}
+
 
 
 // --- VM Internals ---
@@ -117,12 +772,14 @@ static void resetStack() {
   vm.frameCount = 0;
 }
 
-static void runtimeError(const char* format, ...) {
+void runtimeError(const char* format, ...) {
   va_list args;
   va_start(args, format);
   vfprintf(stderr, format, args);
   va_end(args);
   fputs("\n", stderr);
+
+  vm.hadError = true;
 
   for (int i = vm.frameCount - 1; i >= 0; i--) {
     CallFrame* frame = &vm.frames[i];
@@ -139,7 +796,7 @@ static void runtimeError(const char* format, ...) {
   resetStack();
 }
 
-static void defineNative(const char* name, NativeFn function) {
+void defineNative(const char* name, NativeFn function) {
   push(OBJ_VAL(copyString(name, (int)strlen(name))));
   push(OBJ_VAL(newNative(function)));
   tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
@@ -147,9 +804,19 @@ static void defineNative(const char* name, NativeFn function) {
   pop();
 }
 
+void defineGlobal(const char* name, Value value) {
+  push(OBJ_VAL(copyString(name, (int)strlen(name))));
+  push(value);
+  tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+  pop();
+  pop();
+}
+
 void initVM() {
-  resetStack();
+  vm.frameCount = 0;
+  vm.stackTop = vm.stack;
   vm.objects = NULL;
+  vm.hadError = false;
   initTable(&vm.globals);
   initTable(&vm.strings);
 
@@ -157,6 +824,42 @@ void initVM() {
   defineNative("clock", clockNative);
   defineNative("input", inputNative);
   defineNative("readFile", readFileNative);
+  defineNative("walkDir", walkDirNative);
+  defineNative("print", printNative);
+  defineNative("println", printlnNative);
+
+  // Math functions
+  defineNative("sqrt", sqrtNative);
+  defineNative("sin", sinNative);
+  defineNative("cos", cosNative);
+  defineNative("tan", tanNative);
+  defineNative("abs", absNative);
+  defineNative("len", stringLengthNative);
+  defineNative("toString", toStringNative);
+  defineNative("lines", countLinesNative);
+  defineNative("listLen", listLenNative);
+  defineNative("listGet", listGetNative);
+  defineNative("endsWith", endsWithNative);
+  defineNative("toNum", toNumNative);
+  defineNative("map", mapNative);
+  defineNative("mapSet", mapSetNative);
+  defineNative("mapGet", mapGetNative);
+  defineNative("mapDelete", mapDeleteNative);
+  defineNative("analyze", analyzeNative);
+  defineNative("system", systemNative);
+
+  // Filesystem
+  defineNative("readFile", readFileNative);
+  defineNative("writeFile", writeFileNative);
+  defineNative("appendFile", appendFileNative);
+  defineNative("fileExists", fileExistsNative);
+  defineNative("deleteFile", deleteFileNative);
+  defineNative("fileSize", fileSizeNative);
+  defineNative("isDir", isDirNative);
+  defineNative("isFile", isFileNative);
+  defineNative("listDir", listDirNative);
+
+  initMathLibrary();
 }
 
 void freeVM() {
@@ -224,6 +927,7 @@ static bool callValue(Value callee, int argCount) {
       case OBJ_NATIVE: {
         NativeFn native = AS_NATIVE(callee);
         Value result = native(argCount, vm.stackTop - argCount);
+        if (vm.hadError) return false;
         vm.stackTop -= argCount + 1;
         push(result);
         return true;
@@ -376,11 +1080,6 @@ static InterpretResult run() {
         }
         push(NUMBER_VAL(-AS_NUMBER(pop())));
         break;
-      case OP_PRINT: {
-        printValue(pop());
-        printf("\n");
-        break;
-      }
       case OP_JUMP: {
         uint16_t offset = READ_SHORT();
         frame->ip += offset;
@@ -402,6 +1101,67 @@ static InterpretResult run() {
           return INTERPRET_RUNTIME_ERROR;
         }
         frame = &vm.frames[vm.frameCount - 1];
+        break;
+      }
+      case OP_NEW_LIST: {
+        ObjList* list = newList();
+        push(OBJ_VAL(list));
+        break;
+      }
+      case OP_LIST_APPEND: {
+        Value item = pop();
+        ObjList* list = AS_LIST(peek(0));
+        writeValueArray(list->items, item);
+        break;
+      }
+      case OP_GET_SUBSCRIPT: {
+        Value indexVal = pop();
+        Value listVal = pop();
+
+        if (!IS_LIST(listVal)) {
+          runtimeError("Can only subscript lists.");
+          return INTERPRET_RUNTIME_ERROR;
+        }
+        ObjList* list = AS_LIST(listVal);
+
+        if (!IS_NUMBER(indexVal)) {
+          runtimeError("List index must be a number.");
+          return INTERPRET_RUNTIME_ERROR;
+        }
+        int index = AS_NUMBER(indexVal);
+
+        if (index < 0 || index >= list->items->count) {
+          runtimeError("List index out of bounds.");
+          return INTERPRET_RUNTIME_ERROR;
+        }
+
+        push(list->items->values[index]);
+        break;
+      }
+      case OP_SET_SUBSCRIPT: {
+        Value value = pop();
+        Value indexVal = pop();
+        Value listVal = pop();
+
+        if (!IS_LIST(listVal)) {
+          runtimeError("Can only subscript lists.");
+          return INTERPRET_RUNTIME_ERROR;
+        }
+        ObjList* list = AS_LIST(listVal);
+
+        if (!IS_NUMBER(indexVal)) {
+          runtimeError("List index must be a number.");
+          return INTERPRET_RUNTIME_ERROR;
+        }
+        int index = AS_NUMBER(indexVal);
+
+        if (index < 0 || index >= list->items->count) {
+          runtimeError("List index out of bounds.");
+          return INTERPRET_RUNTIME_ERROR;
+        }
+
+        list->items->values[index] = value;
+        push(value);
         break;
       }
       case OP_RETURN: {

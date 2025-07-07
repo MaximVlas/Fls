@@ -190,6 +190,8 @@ Token scanToken() {
         case ')': return makeToken(TOKEN_RPAREN);
         case '{': return makeToken(TOKEN_LBRACE);
         case '}': return makeToken(TOKEN_RBRACE);
+        case '[': return makeToken(TOKEN_LBRACKET);
+        case ']': return makeToken(TOKEN_RBRACKET);
         case ';': return makeToken(TOKEN_SEMICOLON);
         case ',': return makeToken(TOKEN_COMMA);
         case '.': return makeToken(TOKEN_DOT);

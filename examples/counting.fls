@@ -1,13 +1,13 @@
 var startTime = clock();
 
 for (var i = 0; i <= 1000000; i = i + 1) {
-  print i;
+  println (i);
 }
 
 var endTime = clock();
 var elapsedTime = endTime - startTime;
 
-print "Done counting!";
-print "The loop took:";
-print elapsedTime;
-print "seconds.";
+println ("Done counting!");
+println ("The loop took:");
+println (elapsedTime);
+println ("seconds.");

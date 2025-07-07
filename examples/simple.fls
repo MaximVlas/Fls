@@ -1,7 +1,7 @@
 // Example to test functions.
 
 fun sayHi(first, last) {
-  print "Hi, " + first + " " + last + "!";
+  println("Hi, " + first + " " + last + "!");
 }
 
 sayHi("Dear", "User");
@@ -16,8 +16,8 @@ fun fib(n) {
 }
 
 var start = clock();
-print "Fibonacci of 32 is:";
-print fib(32);
+println("Fibonacci of 36 is:");
+println(fib(36));
 var end = clock();
-print "Took:";
-print end - start;
+println("Took:");
+println(end - start);
