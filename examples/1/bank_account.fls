@@ -1,0 +1,40 @@
+// bank_account.fls
+
+var balance = 100;
+
+fun printBalance() {
+  println("Current balance:");
+  println(balance);
+}
+
+fun deposit(amount) {
+  balance = balance + amount;
+  println("Deposited:");
+  println(amount);
+  printBalance();
+}
+
+fun withdraw(amount) {
+  if (amount > balance) {
+    println("Error: Insufficient funds.");
+  } else {
+    balance = balance - amount;
+    println("Withdrew:");
+    println(amount);
+  }
+  printBalance();
+}
+
+
+println("Welcome to FLS Bank!");
+printBalance();
+println("---");
+
+deposit(50);
+println("---");
+
+withdraw(25);
+println("---");
+
+withdraw(200);
+println("---");

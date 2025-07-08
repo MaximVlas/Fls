@@ -1,0 +1,22 @@
+fun fib(n) {
+  if (n < 2) {
+    return n;
+  }
+  return fib(n - 2) + fib(n - 1);
+}
+
+var n = 35;
+
+println("Running FLS benchmark...");
+var startTime = clock();
+var result = fib(n);
+var endTime = clock();
+
+var elapsedTime = endTime - startTime;
+
+println("FLS Benchmark Complete:");
+println("fib(35) is");
+println(result);
+println("Calculation took:");
+println(elapsedTime);
+println("seconds.");
