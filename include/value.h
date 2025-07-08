@@ -51,6 +51,8 @@ typedef struct {
 bool valuesEqual(Value a, Value b);
 void initValueArray(ValueArray* array);
 void writeValueArray(ValueArray* array, Value value);
+Value popValueArray(ValueArray* array);
+Value removeValueArray(ValueArray* array, int index);
 void freeValueArray(ValueArray* array);
 void printValue(Value value);
 

@@ -57,10 +57,9 @@ static Value randomIntNative(int argCount, Value* args) {
         return NIL_VAL;
     }
 
+    // Correctly handle the range calculation for the modulo operator.
     uint64_t range = (uint64_t)max - (uint64_t)min + 1;
-    uint64_t rand_val = random_uint64();
-    
-    return NUMBER_VAL((double)((rand_val % range) + min));
+    return NUMBER_VAL(min + (double)(random_uint64() % range));
 }
 
 void initRandomLibrary() {

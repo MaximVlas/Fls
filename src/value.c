@@ -31,6 +31,31 @@ void freeValueArray(ValueArray* array) {
     initValueArray(array);
 }
 
+Value popValueArray(ValueArray* array) {
+    if (array->count == 0) {
+        // Handle error: popping from an empty array
+        return NIL_VAL; // Or some other error indicator
+    }
+    array->count--;
+    return array->values[array->count];
+}
+
+Value removeValueArray(ValueArray* array, int index) {
+    if (index < 0 || index >= array->count) {
+        return NIL_VAL; // Index out of bounds
+    }
+
+    Value removedValue = array->values[index];
+
+    // Shift elements to the left
+    for (int i = index; i < array->count - 1; i++) {
+        array->values[i] = array->values[i + 1];
+    }
+
+    array->count--;
+    return removedValue;
+}
+
 // Prints a value.
 void printValue(Value value) {
     switch (value.type) {

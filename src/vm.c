@@ -30,7 +30,9 @@ double fmod(double x, double y);
 #include "object.h"
 #include "vm.h"
 #include "../std/include/io.h"
-#include "math.h"  // Our custom math.h
+#include "../std/include/dict.h"
+#include "../std/include/math.h"
+#include "../std/include/random.h"  // Our custom random.h
 #include <ctype.h>
 
 // Helper to trim leading/trailing whitespace and quotes from a string, in-place.
@@ -96,6 +98,14 @@ static Value toStringNative(int argCount, Value* args) {
         runtimeError("toString() argument must be a number, bool, nil, or string.");
         return NIL_VAL;
     }
+}
+
+Value isStringNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("isString() takes one argument.");
+        return NIL_VAL;
+    }
+    return BOOL_VAL(IS_STRING(args[0]));
 }
 
 // Native 'lines' function: counts the number of lines in a string.
@@ -174,6 +184,108 @@ static Value listGetNative(int argCount, Value* args) {
   return list->items->values[index];
 }
 
+// Native 'listSet' function: sets the item at a given index in a list.
+static Value listSetNative(int argCount, Value* args) {
+  if (argCount != 3) {
+    runtimeError("listSet() takes exactly 3 arguments (%d given).", argCount);
+    return NIL_VAL;
+  }
+
+  if (!IS_LIST(args[0])) {
+    runtimeError("listSet() first argument must be a list.");
+    return NIL_VAL;
+  }
+
+  if (!IS_NUMBER(args[1])) {
+    runtimeError("listSet() second argument must be a number (index).");
+    return NIL_VAL;
+  }
+
+  ObjList* list = AS_LIST(args[0]);
+  int index = AS_NUMBER(args[1]);
+
+  if (index < 0 || index >= list->items->count) {
+    runtimeError("listSet() index out of bounds.");
+    return NIL_VAL;
+  }
+
+  list->items->values[index] = args[2];
+  return args[2];
+}
+
+// Native 'listPush' function: adds an item to the end of a list.
+static Value listPushNative(int argCount, Value* args) {
+    if (argCount != 2) {
+        runtimeError("listPush() takes exactly 2 arguments (%d given).", argCount);
+        return NIL_VAL;
+    }
+    if (!IS_LIST(args[0])) {
+        runtimeError("listPush() first argument must be a list.");
+        return NIL_VAL;
+    }
+
+    ObjList* list = AS_LIST(args[0]);
+    writeValueArray(list->items, args[1]);
+    return args[1];
+}
+
+// Native 'listPop' function: removes and returns the last item of a list.
+static Value listPopNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("listPop() takes exactly 1 argument (%d given).", argCount);
+        return NIL_VAL;
+    }
+    if (!IS_LIST(args[0])) {
+        runtimeError("listPop() first argument must be a list.");
+        return NIL_VAL;
+    }
+
+    ObjList* list = AS_LIST(args[0]);
+    if (list->items->count == 0) {
+        runtimeError("listPop() called on an empty list.");
+        return NIL_VAL;
+    }
+
+    return popValueArray(list->items);
+}
+
+// Native 'listClear' function: removes all items from a list.
+static Value listClearNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("listClear() takes exactly 1 argument (%d given).", argCount);
+        return NIL_VAL;
+    }
+    if (!IS_LIST(args[0])) {
+        runtimeError("listClear() first argument must be a list.");
+        return NIL_VAL;
+    }
+
+    ObjList* list = AS_LIST(args[0]);
+    freeValueArray(list->items);
+    
+    return NIL_VAL;
+}
+
+// Native 'listShift' function: removes and returns the first item of a list.
+static Value listShiftNative(int argCount, Value* args) {
+    if (argCount != 1) {
+        runtimeError("listShift() takes exactly 1 argument (%d given).", argCount);
+        return NIL_VAL;
+    }
+    if (!IS_LIST(args[0])) {
+        runtimeError("listShift() first argument must be a list.");
+        return NIL_VAL;
+    }
+
+    ObjList* list = AS_LIST(args[0]);
+    if (list->items->count == 0) {
+        runtimeError("listShift() called on an empty list.");
+        return NIL_VAL;
+    }
+
+    return removeValueArray(list->items, 0);
+}
+
 // Native 'endsWith' function: checks if a string ends with a given suffix.
 static Value endsWithNative(int argCount, Value* args) {
   if (argCount != 2) {
@@ -229,6 +341,73 @@ static Value mapNative(int argCount, Value* args) {
         return NIL_VAL;
     }
     return OBJ_VAL(newMap());
+}
+
+// Native 'trim' function: removes leading/trailing whitespace from a string.
+static Value trimNative(int argCount, Value* args) {
+  if (argCount != 1) {
+    runtimeError("trim() takes exactly 1 argument (%d given).", argCount);
+    return NIL_VAL;
+  }
+  if (!IS_STRING(args[0])) {
+    runtimeError("trim() argument must be a string.");
+    return NIL_VAL;
+  }
+
+  ObjString* string = AS_STRING(args[0]);
+  char* source = string->chars;
+  while (isspace((unsigned char)*source)) source++;
+
+  if (*source == 0) { // All spaces?
+    return OBJ_VAL(copyString("", 0));
+  }
+
+  char* end = source + strlen(source) - 1;
+  while (end > source && isspace((unsigned char)*end)) end--;
+
+  return OBJ_VAL(copyString(source, (int)(end - source + 1)));
+}
+
+// Native 'toUpperCase' function: converts a string to uppercase.
+static Value toUpperCaseNative(int argCount, Value* args) {
+  if (argCount != 1) {
+    runtimeError("toUpperCase() takes exactly 1 argument (%d given).", argCount);
+    return NIL_VAL;
+  }
+  if (!IS_STRING(args[0])) {
+    runtimeError("toUpperCase() argument must be a string.");
+    return NIL_VAL;
+  }
+
+  ObjString* string = AS_STRING(args[0]);
+  char* newChars = ALLOCATE(char, string->length + 1);
+  for (int i = 0; i < string->length; i++) {
+    newChars[i] = toupper(string->chars[i]);
+  }
+  newChars[string->length] = '\0';
+
+  return OBJ_VAL(takeString(newChars, string->length));
+}
+
+// Native 'toLowerCase' function: converts a string to lowercase.
+static Value toLowerCaseNative(int argCount, Value* args) {
+  if (argCount != 1) {
+    runtimeError("toLowerCase() takes exactly 1 argument (%d given).", argCount);
+    return NIL_VAL;
+  }
+  if (!IS_STRING(args[0])) {
+    runtimeError("toLowerCase() argument must be a string.");
+    return NIL_VAL;
+  }
+
+  ObjString* string = AS_STRING(args[0]);
+  char* newChars = ALLOCATE(char, string->length + 1);
+  for (int i = 0; i < string->length; i++) {
+    newChars[i] = tolower(string->chars[i]);
+  }
+  newChars[string->length] = '\0';
+
+  return OBJ_VAL(takeString(newChars, string->length));
 }
 
 static Value mapSetNative(int argCount, Value* args) {
@@ -818,7 +997,9 @@ void runtimeError(const char* format, ...) {
     CallFrame* frame = &vm.frames[i];
     ObjFunction* function = frame->function;
     size_t instruction = frame->ip - function->chunk.code - 1;
-    fprintf(stderr, "[line %d] in ", function->chunk.lines[instruction]);
+    ObjModule* module = function->module;
+    const char* moduleName = (module != NULL && module->name != NULL) ? module->name->chars : "<unknown>";
+    fprintf(stderr, "[%s:%d] in ", moduleName, function->chunk.lines[instruction]);
     if (function->name == NULL) {
       fprintf(stderr, "script\n");
     } else {
@@ -869,10 +1050,23 @@ void initVM() {
   defineNative("tan", tanNative);
   defineNative("abs", absNative);
   defineNative("len", stringLengthNative);
+  defineNative("isString", isStringNative);
   defineNative("toString", toStringNative);
+
+  // Dict
+  defineNative("newDict", newDictNative);
+  defineNative("dictSet", dictSetNative);
+  defineNative("dictGet", dictGetNative);
+  defineNative("dictDelete", dictDeleteNative);
+  defineNative("dictExists", dictExistsNative);
   defineNative("lines", countLinesNative);
   defineNative("listLen", listLenNative);
   defineNative("listGet", listGetNative);
+  defineNative("listSet", listSetNative);
+  defineNative("listPush", listPushNative);
+  defineNative("listPop", listPopNative);
+  defineNative("listClear", listClearNative);
+  defineNative("listShift", listShiftNative);
   defineNative("endsWith", endsWithNative);
   defineNative("toNum", toNumNative);
   defineNative("map", mapNative);
@@ -888,7 +1082,9 @@ void initVM() {
   defineNative("appendFile", appendFileNative);
   defineNative("pathExists", pathExistsNative);
   defineNative("deleteFile", deleteFileNative);
+  defineNative("rename", renameNative);
   defineNative("createDir", createDirNative);
+  defineNative("removeDir", removeDirNative);
   defineNative("fileSize", fileSizeNative);
   defineNative("isDir", isDirNative);
   defineNative("isFile", isFileNative);
@@ -898,8 +1094,12 @@ void initVM() {
   defineNative("startsWith", startsWithNative);
   defineNative("substring", substringNative);
   defineNative("split", splitNative);
+  defineNative("trim", trimNative);
+  defineNative("toUpperCase", toUpperCaseNative);
+  defineNative("toLowerCase", toLowerCaseNative);
 
   initMathLibrary();
+  initRandomLibrary();
 }
 
 void freeVM() {
@@ -924,7 +1124,9 @@ static Value peek(int distance) { return vm.stackTop[-1 - distance]; }
 
 
 static bool isFalsey(Value value) {
-  return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
+  return IS_NIL(value) || 
+         (IS_BOOL(value) && !AS_BOOL(value)) ||
+         (IS_NUMBER(value) && AS_NUMBER(value) == 0);
 }
 
 static void concatenate() {
@@ -1322,8 +1524,8 @@ static InterpretResult run() {
 #undef BINARY_OP
 }
 
-InterpretResult interpret(const char* source) {
-  ObjModule* mainModule = newModule(NULL);
+InterpretResult interpret(const char* path, const char* source) {
+  ObjModule* mainModule = newModule(copyString(path, path == NULL ? 0 : strlen(path)));
 
   ObjFunction* function = compile(source, mainModule);
   if (function == NULL) return INTERPRET_COMPILE_ERROR;

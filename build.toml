@@ -1,6 +1,8 @@
 # Build configuration for the FLS language (Bytecode VM version)
 
-output_name = "fls.exe"
+
+# To use it use c-builder --force, or c-builder --help for more indormation, DONT USE c-builder build, AT ALL, dont use the build statement at all
+output_name = "fls"
 
 # The source files required for the new, faster bytecode VM.
 sources = [
@@ -17,6 +19,7 @@ sources = [
     "std/src/io.c",
     "std/src/math.c",
     "std/src/random.c",
+    "std/src/dict.c",
 ]
 
 include_dirs = [

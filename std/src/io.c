@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h> // For rmdir
 
 #include "io.h"
 #include "value.h"
@@ -83,31 +84,40 @@ static char* readFileText(const char* path, size_t* fileSize) {
 
 Value readFileNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("readFile() takes one string argument (path).");
+        runtimeError("readFile() expects one string argument (path).");
         return NIL_VAL;
     }
 
-    // Create a mutable copy of the path to trim it.
-    const char* originalPath = AS_CSTRING(args[0]);
-    char* path = (char*)malloc(strlen(originalPath) + 1);
-    if (path == NULL) {
-        runtimeError("Memory allocation failed.");
-        return NIL_VAL;
-    }
-    strcpy(path, originalPath);
-    trimString(path);
-
-    size_t fileSize;
-    char* content = readFileText(path, &fileSize);
-
-    if (content == NULL) {
-        runtimeError("Could not read file \"%s\".", path);
-        free(path);
-        return NIL_VAL;
+    const char* path = AS_CSTRING(args[0]);
+    FILE* file = fopen(path, "rb");
+    if (file == NULL) {
+        return NIL_VAL; // Return nil if file can't be opened
     }
 
-    free(path);
-    return OBJ_VAL(takeString(content, fileSize));
+    fseek(file, 0L, SEEK_END);
+    size_t fileSize = ftell(file);
+    rewind(file);
+
+    char* buffer = (char*)malloc(fileSize + 1);
+    if (buffer == NULL) {
+        fprintf(stderr, "Not enough memory to read \"%s\".\n", path);
+        fclose(file);
+        exit(74);
+    }
+
+    size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
+    if (bytesRead < fileSize) {
+        fprintf(stderr, "Could not read file \"%s\".\n", path);
+        free(buffer);
+        fclose(file);
+        exit(74);
+    }
+
+    buffer[bytesRead] = '\0';
+    fclose(file);
+
+    // takeString will handle freeing the buffer
+    return OBJ_VAL(takeString(buffer, bytesRead));
 }
 
 Value writeFileNative(int argCount, Value* args) {
@@ -120,15 +130,15 @@ Value writeFileNative(int argCount, Value* args) {
 
     FILE* file = fopen(path, "wb");
     if (file == NULL) {
-        runtimeError("Could not open file \"%s\" for writing.", path);
-        return NIL_VAL;
+        // We don't call runtimeError here, just return false.
+        return BOOL_VAL(false);
     }
 
     size_t contentLength = AS_STRING(args[1])->length;
-    fwrite(content, sizeof(char), contentLength, file);
+    size_t bytesWritten = fwrite(content, sizeof(char), contentLength, file);
     fclose(file);
 
-    return NIL_VAL;
+    return BOOL_VAL(bytesWritten == contentLength);
 }
 
 Value appendFileNative(int argCount, Value* args) {
@@ -141,15 +151,14 @@ Value appendFileNative(int argCount, Value* args) {
 
     FILE* file = fopen(path, "ab");
     if (file == NULL) {
-        runtimeError("Could not open file \"%s\" for appending.", path);
-        return NIL_VAL;
+        return BOOL_VAL(false);
     }
 
     size_t contentLength = AS_STRING(args[1])->length;
-    fwrite(content, sizeof(char), contentLength, file);
+    size_t bytesWritten = fwrite(content, sizeof(char), contentLength, file);
     fclose(file);
 
-    return NIL_VAL;
+    return BOOL_VAL(bytesWritten == contentLength);
 }
 
 Value pathExistsNative(int argCount, Value* args) {
@@ -169,6 +178,16 @@ Value deleteFileNative(int argCount, Value* args) {
     }
     const char* path = AS_CSTRING(args[0]);
     return BOOL_VAL(remove(path) == 0);
+}
+
+Value renameNative(int argCount, Value* args) {
+    if (argCount != 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("rename() takes two string arguments (oldPath, newPath).");
+        return NIL_VAL;
+    }
+    const char* oldPath = AS_CSTRING(args[0]);
+    const char* newPath = AS_CSTRING(args[1]);
+    return BOOL_VAL(rename(oldPath, newPath) == 0);
 }
 
 Value fileSizeNative(int argCount, Value* args) {
@@ -219,6 +238,16 @@ Value createDirNative(int argCount, Value* args) {
     // mkdir returns 0 on success. We'll return true for success.
     // The second argument is the mode, 0777 is a common default.
     return BOOL_VAL(mkdir(path, 0777) == 0);
+}
+
+Value removeDirNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("removeDir() takes one string argument (path).");
+        return NIL_VAL;
+    }
+    const char* path = AS_CSTRING(args[0]);
+    // rmdir returns 0 on success.
+    return BOOL_VAL(rmdir(path) == 0);
 }
 
 Value startsWithNative(int argCount, Value* args) {
