@@ -5,6 +5,6 @@
 #include "vm.h"
 
 // Compiles source code and returns the top-level function, or NULL on error.
-ObjFunction* compile(const char* source);
+ObjFunction* compile(const char* source, ObjModule* module);
 
 #endif

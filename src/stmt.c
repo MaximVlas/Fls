@@ -69,6 +69,18 @@ Stmt* newWhileStmt(Expr* condition, Stmt* body) {
     return stmt;
 }
 
+Stmt* newImportStmt(Expr* path) {
+    Stmt* stmt = allocateStmt(STMT_IMPORT);
+    stmt->as.importStmt.path = path;
+    return stmt;
+}
+
+Stmt* newExportStmt(Stmt* declaration) {
+    Stmt* stmt = allocateStmt(STMT_EXPORT);
+    stmt->as.exportStmt.declaration = declaration;
+    return stmt;
+}
+
 void freeStmt(Stmt* stmt) {
     if (stmt == NULL) return;
 
@@ -110,6 +122,12 @@ void freeStmt(Stmt* stmt) {
         case STMT_WHILE:
             freeExpr(stmt->as.whileStmt.condition);
             freeStmt(stmt->as.whileStmt.body);
+            break;
+        case STMT_IMPORT:
+            freeExpr(stmt->as.importStmt.path);
+            break;
+        case STMT_EXPORT:
+            freeStmt(stmt->as.exportStmt.declaration);
             break;
     }
     free(stmt);

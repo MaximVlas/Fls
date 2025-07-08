@@ -112,7 +112,14 @@ static TokenType identifierType() {
     switch (lexer.start[0]) {
         case 'a': return checkKeyword(1, 2, "nd", TOKEN_AND);
         case 'c': return checkKeyword(1, 4, "lass", TOKEN_CLASS);
-        case 'e': return checkKeyword(1, 3, "lse", TOKEN_ELSE);
+        case 'e':
+            if (lexer.current - lexer.start > 1) {
+                switch (lexer.start[1]) {
+                    case 'l': return checkKeyword(2, 2, "se", TOKEN_ELSE);
+                    case 'x': return checkKeyword(2, 4, "port", TOKEN_EXPORT);
+                }
+            }
+            break;
         case 'f':
             if (lexer.current - lexer.start > 1) {
                 switch (lexer.start[1]) {
@@ -122,7 +129,14 @@ static TokenType identifierType() {
                 }
             }
             break;
-        case 'i': return checkKeyword(1, 1, "f", TOKEN_IF);
+        case 'i':
+            if (lexer.current - lexer.start > 1) {
+                switch (lexer.start[1]) {
+                    case 'f': return checkKeyword(2, 0, "", TOKEN_IF);
+                    case 'm': return checkKeyword(2, 4, "port", TOKEN_IMPORT);
+                }
+            }
+            break;
         case 'n': return checkKeyword(1, 2, "il", TOKEN_NIL);
         case 'o': return checkKeyword(1, 1, "r", TOKEN_OR);
         case 'p': return checkKeyword(1, 4, "rint", TOKEN_PRINT);

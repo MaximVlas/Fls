@@ -8,13 +8,15 @@
 double fmod(double x, double y);
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
-#include <dirent.h>
+#include <time.h>
 #include <sys/time.h>
 #include <sys/stat.h>
 #if defined(_WIN32)
 #include <direct.h>
 #endif
+#include <dirent.h>
 #include <time.h>
 #include <ctype.h>
 #include <limits.h>
@@ -29,6 +31,32 @@ double fmod(double x, double y);
 #include "vm.h"
 #include "../std/include/io.h"
 #include "math.h"  // Our custom math.h
+#include <ctype.h>
+
+// Helper to trim leading/trailing whitespace and quotes from a string, in-place.
+static void trimString(char* str) {
+    if (str == NULL) return;
+
+    char* start = str;
+    // Find the first non-whitespace, non-quote character
+    while (isspace((unsigned char)*start) || *start == '\'' || *start == '"') {
+        start++;
+    }
+
+    // Find the last non-whitespace, non-quote character
+    char* end = str + strlen(str) - 1;
+    while (end > start && (isspace((unsigned char)*end) || *end == '\'' || *end == '"')) {
+        end--;
+    }
+
+    // Null-terminate the trimmed string
+    *(end + 1) = '\0';
+
+    // Shift the trimmed string to the beginning if necessary
+    if (str != start) {
+        memmove(str, start, end - start + 2); // +2 to include the null terminator
+    }
+}
 
 // Native 'len' function: returns the length of a string.
 static Value stringLengthNative(int argCount, Value* args) {
@@ -195,6 +223,7 @@ static Value toNumNative(int argCount, Value* args) {
 }
 
 static Value mapNative(int argCount, Value* args) {
+    (void)args; // Unused.
     if (argCount != 0) {
         runtimeError("map() takes no arguments (%d given).", argCount);
         return NIL_VAL;
@@ -344,9 +373,10 @@ static void walk(const char* dir, ObjList* list) {
         }
 
         if (S_ISDIR(st.st_mode)) {
-            walk(path, list);
+            // For now, we don't recurse into subdirectories for listDir.
+            // To add recursion, we would call walk(path, list) here.
         } else {
-            Value pathValue = OBJ_VAL(copyString(path, strlen(path)));
+            Value pathValue = OBJ_VAL(copyString(dp->d_name, strlen(dp->d_name)));
             writeValueArray(list->items, pathValue);
         }
     }
@@ -401,7 +431,7 @@ static void walkAndSubmitTasks(const char* dir, TaskQueue* queue, ObjList* exten
 // --- Task Queue Implementation ---
 static void queue_init(TaskQueue* q) {
     q->front = 0;
-    q->rear = 0;
+    q->rear = -1;
     q->count = 0;
     q->finished_adding = false;
     pthread_mutex_init(&q->mutex, NULL);
@@ -452,7 +482,10 @@ static Task* queue_pop(TaskQueue* q) {
 }
 
 // Helper to read a file from disk into a string.
-static char* readFileHelper(const char* path) {
+
+
+// Helper to read a file from disk into a string.
+static char* readFile(const char* path) {
   FILE* file = fopen(path, "rb");
   if (file == NULL) {
     return NULL;
@@ -490,7 +523,7 @@ static void analyzeFileForWorker(const char* path, ThreadResult* result, LogLeve
         pthread_mutex_unlock(&print_mutex);
     }
 
-    char* source = readFileHelper(path);
+    char* source = readFile(path);
     if (source == NULL) return;
 
     size_t len = strlen(source);
@@ -584,7 +617,22 @@ static void walkAndSubmitTasks(const char* dir, TaskQueue* queue, ObjList* exten
 // --- Native 'analyze' function (multi-threaded, with exclusions) ---
 // --- Filesystem Native Functions ---
 
-static Value listDirNative(int argCount, Value* args) {
+Value listDirNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("listDir() expects one string argument (directory path).");
+        return NIL_VAL;
+    }
+    
+    const char* dir = AS_CSTRING(args[0]);
+    ObjList* list = newList();
+    
+    // We need to push the list onto the stack here to protect it from GC
+    // in case copyString() inside walk() triggers a collection.
+    push(OBJ_VAL(list));
+    walk(dir, list);
+    pop(); // Pop the list from the stack
+    
+    return OBJ_VAL(list);
 }
 
 static Value systemNative(int argCount, Value* args) {
@@ -726,41 +774,26 @@ static Value analyzeNative(int argCount, Value* args) {
 }
 
 // Helper to check if a file has a valid extension.
-static bool hasValidExtension(const char* filename, ObjList* extensions) {
+bool hasValidExtension(const char* filename, ObjList* extensions) {
+    if (extensions == NULL || extensions->items->count == 0) {
+        return true; // No extensions to check against, so all files are valid
+    }
+
     const char* dot = strrchr(filename, '.');
-    if (!dot || dot == filename) return false;
+    if (dot == NULL) {
+        return false; // No extension
+    }
 
     for (int i = 0; i < extensions->items->count; i++) {
-        Value extValue = extensions->items->values[i];
-        if (!IS_STRING(extValue)) continue;
-        ObjString* ext = AS_STRING(extValue);
+        Value extVal = extensions->items->values[i];
+        if (!IS_STRING(extVal)) continue;
+        
+        ObjString* ext = AS_STRING(extVal);
         if (strcmp(dot, ext->chars) == 0) {
             return true;
         }
     }
     return false;
-}
-
-static Value walkDirNative(int argCount, Value* args) {
-    if (argCount != 1) {
-        runtimeError("walkDir() takes exactly 1 argument (%d given).", argCount);
-        return NIL_VAL;
-    }
-    if (!IS_STRING(args[0])) {
-        runtimeError("walkDir() argument must be a string path.");
-        return NIL_VAL;
-    }
-
-    char* rootDir = AS_CSTRING(args[0]);
-    ObjList* list = newList();
-
-    // We need to push the list onto the stack here to protect it from GC
-    // in case copyString() inside walk() triggers a collection.
-    push(OBJ_VAL(list));
-    walk(rootDir, list);
-    pop();
-
-    return OBJ_VAL(list);
 }
 
 
@@ -818,13 +851,14 @@ void initVM() {
   vm.objects = NULL;
   vm.hadError = false;
   initTable(&vm.globals);
+  initTable(&vm.modules);
   initTable(&vm.strings);
 
   // Define all native functions.
   defineNative("clock", clockNative);
   defineNative("input", inputNative);
   defineNative("readFile", readFileNative);
-  defineNative("walkDir", walkDirNative);
+  defineNative("listDir", listDirNative);
   defineNative("print", printNative);
   defineNative("println", printlnNative);
 
@@ -852,18 +886,25 @@ void initVM() {
   defineNative("readFile", readFileNative);
   defineNative("writeFile", writeFileNative);
   defineNative("appendFile", appendFileNative);
-  defineNative("fileExists", fileExistsNative);
+  defineNative("pathExists", pathExistsNative);
   defineNative("deleteFile", deleteFileNative);
+  defineNative("createDir", createDirNative);
   defineNative("fileSize", fileSizeNative);
   defineNative("isDir", isDirNative);
   defineNative("isFile", isFileNative);
   defineNative("listDir", listDirNative);
+
+  // String utils
+  defineNative("startsWith", startsWithNative);
+  defineNative("substring", substringNative);
+  defineNative("split", splitNative);
 
   initMathLibrary();
 }
 
 void freeVM() {
   freeTable(&vm.globals);
+  freeTable(&vm.modules);
   freeTable(&vm.strings);
   freeObjects();
 }
@@ -875,10 +916,12 @@ void push(Value value) {
 
 Value pop() {
   vm.stackTop--;
-  return *vm.stackTop;
+  return vm.stackTop[0];
 }
 
 static Value peek(int distance) { return vm.stackTop[-1 - distance]; }
+
+
 
 static bool isFalsey(Value value) {
   return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
@@ -948,6 +991,7 @@ static InterpretResult run() {
   (frame->ip += 2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
 #define READ_CONSTANT() (frame->function->chunk.constants.values[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
+
 #define BINARY_OP(valueType, op)                                           \
   do {                                                                     \
     if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {                       \
@@ -1011,12 +1055,8 @@ static InterpretResult run() {
         push(value);
         break;
       }
-      case OP_DEFINE_GLOBAL: {
-        ObjString* name = READ_STRING();
-        tableSet(&vm.globals, name, peek(0));
-        pop();
-        break;
-      }
+
+
       case OP_SET_GLOBAL: {
         ObjString* name = READ_STRING();
         if (tableSet(&vm.globals, name, peek(0))) {
@@ -1024,6 +1064,24 @@ static InterpretResult run() {
           runtimeError("Undefined variable '%s'.", name->chars);
           return INTERPRET_RUNTIME_ERROR;
         }
+        break;
+      }
+      case OP_EXPORT_VAR: {
+        ObjString* name = READ_STRING();
+        Value value;
+        // Check if the variable is in the globals table first.
+        if (tableGet(&vm.globals, name, &value)) {
+          tableSet(&frame->function->module->variables, name, value);
+        } else {
+          // Fallback to the stack for locally-defined exports.
+          tableSet(&frame->function->module->variables, name, peek(0));
+        }
+        break;
+      }
+      case OP_DEFINE_GLOBAL: {
+        ObjString* name = READ_STRING();
+        tableSet(&vm.globals, name, peek(0));
+        pop();
         break;
       }
       case OP_EQUAL: {
@@ -1080,6 +1138,11 @@ static InterpretResult run() {
         }
         push(NUMBER_VAL(-AS_NUMBER(pop())));
         break;
+      case OP_PRINT: {
+        printValue(pop());
+        printf("\n");
+        break;
+      }
       case OP_JUMP: {
         uint16_t offset = READ_SHORT();
         frame->ip += offset;
@@ -1130,6 +1193,8 @@ static InterpretResult run() {
         }
         int index = AS_NUMBER(indexVal);
 
+        if (index < 0) index = list->items->count + index;
+
         if (index < 0 || index >= list->items->count) {
           runtimeError("List index out of bounds.");
           return INTERPRET_RUNTIME_ERROR;
@@ -1138,6 +1203,7 @@ static InterpretResult run() {
         push(list->items->values[index]);
         break;
       }
+
       case OP_SET_SUBSCRIPT: {
         Value value = pop();
         Value indexVal = pop();
@@ -1155,6 +1221,8 @@ static InterpretResult run() {
         }
         int index = AS_NUMBER(indexVal);
 
+        if (index < 0) index = list->items->count + index;
+
         if (index < 0 || index >= list->items->count) {
           runtimeError("List index out of bounds.");
           return INTERPRET_RUNTIME_ERROR;
@@ -1164,15 +1232,83 @@ static InterpretResult run() {
         push(value);
         break;
       }
+      case OP_IMPORT: {
+        ObjString* moduleName = AS_STRING(pop());
+        Value moduleValue;
+
+        if (tableGet(&vm.modules, moduleName, &moduleValue)) {
+          push(moduleValue);
+        } else {
+          if (moduleName == NULL || moduleName->chars == NULL) {
+            runtimeError("Invalid module name.");
+            return INTERPRET_RUNTIME_ERROR;
+          }
+          char* source = readFile(moduleName->chars);
+          if (source == NULL) {
+            runtimeError("Could not open module '%s'.", moduleName->chars);
+            return INTERPRET_RUNTIME_ERROR;
+          }
+
+          ObjModule* module = newModule(moduleName);
+          push(OBJ_VAL(module));
+
+          tableSet(&vm.modules, moduleName, OBJ_VAL(module));
+
+          ObjFunction* func = compile(source, module);
+          free(source);
+
+          if (func == NULL) {
+            tableDelete(&vm.modules, moduleName);
+            pop(); // Pop the module.
+            return INTERPRET_COMPILE_ERROR;
+          }
+
+          // The module is on the stack. We pop it, push the function, and call it.
+          pop(); // Pop the module.
+          push(OBJ_VAL(func));
+          call(func, 0);
+          frame = &vm.frames[vm.frameCount - 1];
+
+          // The module has been executed. Now, copy its exported variables
+          // to the global scope.
+          for (int i = 0; i < module->variables.capacity; i++) {
+            Entry* entry = &module->variables.entries[i];
+            if (entry->key != NULL) {
+              tableSet(&vm.globals, entry->key, entry->value);
+            }
+          }
+
+          // The import statement leaves the module object on the stack.
+          vm.stackTop[-1] = OBJ_VAL(module);
+        }
+        break;
+      }
+      case OP_EXPORT: {
+        ObjString* varName = READ_STRING();
+        ObjModule* module = frame->function->module;
+        if (module == NULL) {
+          runtimeError("Cannot export from top-level script.");
+          return INTERPRET_RUNTIME_ERROR;
+        }
+        tableSet(&module->variables, varName, peek(0));
+        // Unlike OP_DEFINE_GLOBAL, we keep the value on the stack
+        // for the export statement to use.
+        break;
+      }
       case OP_RETURN: {
         Value result = pop();
         vm.frameCount--;
+
         if (vm.frameCount == 0) {
-          pop();
+          pop(); // Pop main script function.
           return INTERPRET_OK;
         }
+
         vm.stackTop = frame->slots;
         push(result);
+
+        // After returning, the current frame is the one we are returning to.
+        // We need to update our local 'frame' variable to point to it.
         frame = &vm.frames[vm.frameCount - 1];
         break;
       }
@@ -1187,7 +1323,9 @@ static InterpretResult run() {
 }
 
 InterpretResult interpret(const char* source) {
-  ObjFunction* function = compile(source);
+  ObjModule* mainModule = newModule(NULL);
+
+  ObjFunction* function = compile(source, mainModule);
   if (function == NULL) return INTERPRET_COMPILE_ERROR;
 
   push(OBJ_VAL(function));

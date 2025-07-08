@@ -14,11 +14,19 @@ sources = [
     "src/lexer.c",
     "src/compiler.c",
     "src/vm.c",
+    "std/src/io.c",
+    "std/src/math.c",
+    "std/src/random.c",
 ]
 
 include_dirs = [
     "include",
+    "std/include",
 ]
+
+libs = ["m"]
+
+linker_flags = ["-lm", "-pthread"]
 
 # Build modes
 build_mode = "release"
@@ -28,6 +36,8 @@ optimization_level = "Os"
 compiler_flags = [
     "-Wall",
     "-Wextra",
+    "-pthread",
+    "-g",
 ]
 
 # Add these flags to see the bytecode and VM execution trace for debugging

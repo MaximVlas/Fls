@@ -14,6 +14,8 @@ typedef enum {
     STMT_RETURN,
     STMT_VAR,
     STMT_WHILE,
+    STMT_IMPORT,
+    STMT_EXPORT,
 } StmtType;
 
 struct Stmt {
@@ -27,6 +29,8 @@ struct Stmt {
         struct { Token keyword; Expr* value; } returnStmt;
         struct { Token name; Expr* initializer; } var;
         struct { Expr* condition; Stmt* body; } whileStmt;
+        struct { Expr* path; } importStmt;
+        struct { Stmt* declaration; } exportStmt;
     } as;
 };
 
@@ -38,6 +42,8 @@ Stmt* newPrintStmt(Expr* expression);
 Stmt* newReturnStmt(Token keyword, Expr* value);
 Stmt* newVarStmt(Token name, Expr* initializer);
 Stmt* newWhileStmt(Expr* condition, Stmt* body);
+Stmt* newImportStmt(Expr* path);
+Stmt* newExportStmt(Stmt* declaration);
 
 void freeStmt(Stmt* stmt);
 

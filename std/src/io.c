@@ -9,6 +9,32 @@
 #include "value.h"
 #include "object.h" // For string objects
 #include "vm.h"     // For runtimeError
+#include <ctype.h>
+
+// Helper to trim leading/trailing whitespace and quotes from a string, in-place.
+static void trimString(char* str) {
+    if (str == NULL) return;
+
+    char* start = str;
+    // Find the first non-whitespace, non-quote character
+    while (isspace((unsigned char)*start) || *start == '\'' || *start == '"') {
+        start++;
+    }
+
+    // Find the last non-whitespace, non-quote character
+    char* end = str + strlen(str) - 1;
+    while (end > start && (isspace((unsigned char)*end) || *end == '\'' || *end == '"')) {
+        end--;
+    }
+
+    // Null-terminate the trimmed string
+    *(end + 1) = '\0';
+
+    // Shift the trimmed string to the beginning if necessary
+    if (str != start) {
+        memmove(str, start, end - start + 2); // +2 to include the null terminator
+    }
+}
 
 Value printNative(int argCount, Value* args) {
     for (int i = 0; i < argCount; i++) {
@@ -60,15 +86,27 @@ Value readFileNative(int argCount, Value* args) {
         runtimeError("readFile() takes one string argument (path).");
         return NIL_VAL;
     }
-    const char* path = AS_CSTRING(args[0]);
+
+    // Create a mutable copy of the path to trim it.
+    const char* originalPath = AS_CSTRING(args[0]);
+    char* path = (char*)malloc(strlen(originalPath) + 1);
+    if (path == NULL) {
+        runtimeError("Memory allocation failed.");
+        return NIL_VAL;
+    }
+    strcpy(path, originalPath);
+    trimString(path);
+
     size_t fileSize;
     char* content = readFileText(path, &fileSize);
 
     if (content == NULL) {
         runtimeError("Could not read file \"%s\".", path);
+        free(path);
         return NIL_VAL;
     }
 
+    free(path);
     return OBJ_VAL(takeString(content, fileSize));
 }
 
@@ -114,7 +152,7 @@ Value appendFileNative(int argCount, Value* args) {
     return NIL_VAL;
 }
 
-Value fileExistsNative(int argCount, Value* args) {
+Value pathExistsNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
         runtimeError("fileExists() takes one string argument (path).");
         return NIL_VAL;
@@ -161,7 +199,7 @@ Value isDirNative(int argCount, Value* args) {
 
 Value isFileNative(int argCount, Value* args) {
     if (argCount != 1 || !IS_STRING(args[0])) {
-        runtimeError("isFile() takes one string argument (path).");
+        runtimeError("isFile() expects one string argument.");
         return NIL_VAL;
     }
     const char* path = AS_CSTRING(args[0]);
@@ -170,4 +208,85 @@ Value isFileNative(int argCount, Value* args) {
         return BOOL_VAL(false);
     }
     return BOOL_VAL(S_ISREG(buffer.st_mode));
+}
+
+Value createDirNative(int argCount, Value* args) {
+    if (argCount != 1 || !IS_STRING(args[0])) {
+        runtimeError("createDir() expects one string argument (path).");
+        return NIL_VAL;
+    }
+    const char* path = AS_CSTRING(args[0]);
+    // mkdir returns 0 on success. We'll return true for success.
+    // The second argument is the mode, 0777 is a common default.
+    return BOOL_VAL(mkdir(path, 0777) == 0);
+}
+
+Value startsWithNative(int argCount, Value* args) {
+    if (argCount != 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("startsWith() expects two string arguments.");
+        return NIL_VAL;
+    }
+    ObjString* str = AS_STRING(args[0]);
+    ObjString* prefix = AS_STRING(args[1]);
+    if (prefix->length > str->length) return BOOL_VAL(false);
+    return BOOL_VAL(strncmp(str->chars, prefix->chars, prefix->length) == 0);
+}
+
+Value substringNative(int argCount, Value* args) {
+    if (argCount != 3 || !IS_STRING(args[0]) || !IS_NUMBER(args[1]) || !IS_NUMBER(args[2])) {
+        runtimeError("substring() expects a string and two numbers (start, end).");
+        return NIL_VAL;
+    }
+    ObjString* str = AS_STRING(args[0]);
+    int start = AS_NUMBER(args[1]);
+    int end = AS_NUMBER(args[2]);
+
+    if (start < 0 || end > str->length || start > end) {
+        runtimeError("Substring bounds are out of range.");
+        return NIL_VAL;
+    }
+
+    int length = end - start;
+    return OBJ_VAL(copyString(str->chars + start, length));
+}
+
+Value splitNative(int argCount, Value* args) {
+    if (argCount != 2 || !IS_STRING(args[0]) || !IS_STRING(args[1])) {
+        runtimeError("split() expects two string arguments (string, delimiter).");
+        return NIL_VAL;
+    }
+
+    ObjString* str = AS_STRING(args[0]);
+    ObjString* delimiter = AS_STRING(args[1]);
+    ObjList* list = newList();
+    push(OBJ_VAL(list));
+
+    const char* source = str->chars;
+    const char* delim = delimiter->chars;
+    int delim_len = delimiter->length;
+
+    if (delim_len == 0) { // Handle empty delimiter
+        // Just return the original string in a list
+        writeValueArray(list->items, OBJ_VAL(copyString(source, str->length)));
+        pop();
+        return OBJ_VAL(list);
+    }
+
+    const char* current = source;
+    const char* found = strstr(current, delim);
+
+    while (found != NULL) {
+        int token_len = found - current;
+        Value tokenValue = OBJ_VAL(copyString(current, token_len));
+        writeValueArray(list->items, tokenValue);
+
+        current = found + delim_len;
+        found = strstr(current, delim);
+    }
+
+    // Add the final part of the string after the last delimiter
+    writeValueArray(list->items, OBJ_VAL(copyString(current, strlen(current))));
+
+    pop();
+    return OBJ_VAL(list);
 }

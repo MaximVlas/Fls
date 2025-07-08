@@ -11,6 +11,7 @@
 #define IS_CLOSURE(value)      isObjType(value, OBJ_CLOSURE)
 #define IS_FUNCTION(value)     isObjType(value, OBJ_FUNCTION)
 #define IS_LIST(value)         isObjType(value, OBJ_LIST)
+#define IS_MODULE(value)       isObjType(value, OBJ_MODULE)
 #define IS_NATIVE(value)       isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value)       isObjType(value, OBJ_STRING)
 #define IS_UPVALUE(value)      isObjType(value, OBJ_UPVALUE)
@@ -19,6 +20,7 @@
 #define AS_CLOSURE(value)      ((ObjClosure*)AS_OBJ(value))
 #define AS_FUNCTION(value)     ((ObjFunction*)AS_OBJ(value))
 #define AS_LIST(value)         ((ObjList*)AS_OBJ(value))
+#define AS_MODULE(value)       ((ObjModule*)AS_OBJ(value))
 #define AS_NATIVE(value)       (((ObjNative*)AS_OBJ(value))->function)
 #define AS_STRING(value)       ((ObjString*)AS_OBJ(value))
 #define AS_CSTRING(value)      (((ObjString*)AS_OBJ(value))->chars)
@@ -29,6 +31,7 @@ typedef enum {
   OBJ_CLOSURE,
   OBJ_FUNCTION,
   OBJ_LIST,
+  OBJ_MODULE,
   OBJ_NATIVE,
   OBJ_STRING,
   OBJ_UPVALUE,
@@ -46,6 +49,7 @@ typedef struct {
   int upvalueCount;
   Chunk chunk;
   ObjString* name;
+  struct ObjModule* module;
 } ObjFunction;
 
 typedef Value (*NativeFn)(int argCount, Value* args);
@@ -86,6 +90,12 @@ typedef struct {
   Table table;
 } ObjMap;
 
+typedef struct ObjModule {
+  Obj obj;
+  ObjString* name;
+  Table variables;
+} ObjModule;
+
 static inline bool isObjType(Value value, ObjType type) {
   return IS_OBJ(value) && AS_OBJ(value)->type == type;
 }
@@ -94,6 +104,7 @@ ObjClosure* newClosure(ObjFunction* function);
 ObjFunction* newFunction();
 ObjList* newList();
 ObjMap* newMap();
+ObjModule* newModule();
 ObjNative* newNative(NativeFn function);
 ObjString* takeString(char* chars, int length);
 ObjString* copyString(const char* chars, int length);

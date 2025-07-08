@@ -10,10 +10,16 @@ Value printlnNative(int argCount, Value* args);
 Value readFileNative(int argCount, Value* args);
 Value writeFileNative(int argCount, Value* args);
 Value appendFileNative(int argCount, Value* args);
-Value fileExistsNative(int argCount, Value* args);
+Value pathExistsNative(int argCount, Value* args);
 Value deleteFileNative(int argCount, Value* args);
+Value createDirNative(int argCount, Value* args);
 Value fileSizeNative(int argCount, Value* args);
 Value isDirNative(int argCount, Value* args);
 Value isFileNative(int argCount, Value* args);
+
+// String utils
+Value startsWithNative(int argCount, Value* args);
+Value substringNative(int argCount, Value* args);
+Value splitNative(int argCount, Value* args);
 
 #endif // FLS_STD_IO_H

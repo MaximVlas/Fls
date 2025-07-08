@@ -54,6 +54,13 @@ ObjMap* newMap() {
     return map;
 }
 
+ObjModule* newModule(ObjString* name) {
+  ObjModule* module = ALLOCATE_OBJ(ObjModule, OBJ_MODULE);
+  module->name = name;
+  initTable(&module->variables);
+  return module;
+}
+
 ObjNative* newNative(NativeFn function) {
   ObjNative* native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
   native->function = function;
@@ -128,22 +135,11 @@ void printObject(Value value) {
       break;
     }
     case OBJ_MAP: {
-      ObjMap* map = AS_MAP(value);
-      printf("{");
-      bool first = true;
-      for (int i = 0; i < map->table.capacity; i++) {
-        Entry* entry = &map->table.entries[i];
-        if (entry->key != NULL) {
-          if (!first) {
-            printf(", ");
-          }
-          first = false;
-          printValue(OBJ_VAL(entry->key));
-          printf(": ");
-          printValue(entry->value);
-        }
-      }
-      printf("}");
+      printf("<map>");
+      break;
+    }
+    case OBJ_MODULE: {
+      printf("<module>");
       break;
     }
     case OBJ_NATIVE:

@@ -47,6 +47,7 @@ static Stmt* declaration();
 static ParseRule* getRule(TokenType type);
 static Expr* parsePrecedence(Precedence precedence);
 static Stmt* varDeclaration();
+static Stmt* importStatement();
 static Stmt* expressionStatement();
 static Stmt* block();
 
@@ -391,7 +392,18 @@ static Stmt* varDeclaration() {
     return newVarStmt(global, initializer);
 }
 
+static Stmt* importStatement() {
+    consume(TOKEN_STRING, "Expect module path string.");
+    Expr* path = string(); // Re-use the existing string parsing logic
+    consume(TOKEN_SEMICOLON, "Expect ';' after import statement.");
+    return newImportStmt(path);
+}
+
 static Stmt* declaration() {
+    if (match(TOKEN_EXPORT)) {
+        return newExportStmt(declaration());
+    }
+    if (match(TOKEN_IMPORT)) return importStatement();
     if (match(TOKEN_FUN)) return function("function");
     if (match(TOKEN_VAR)) return varDeclaration();
     Stmt* stmt = statement();

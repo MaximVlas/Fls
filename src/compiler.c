@@ -204,13 +204,14 @@ static void patchJump(int offset) {
 }
 
 // Initializes a new compiler.
-static void initCompiler(Compiler* compiler, FunctionType type) {
+static void initCompiler(Compiler* compiler, FunctionType type, ObjModule* module) {
     compiler->enclosing = current;
     compiler->function = NULL;
     compiler->type = type;
     compiler->localCount = 0;
     compiler->scopeDepth = 0;
     compiler->function = newFunction();
+    compiler->function->module = module;
     current = compiler;
 
     if (type != TYPE_SCRIPT) {
@@ -258,8 +259,11 @@ static void endScope() {
 
 // Forward declarations for recursive parsing functions.
 static void expression();
-static void statement();
 static void declaration();
+static void statement();
+static void funDeclaration(bool isExport);
+static void varDeclaration(bool isExport);
+static void importStatement();
 static void list(bool canAssign);
 static void subscript(bool canAssign);
 static ParseRule* getRule(TokenType type);
@@ -595,7 +599,7 @@ static void block() {
 // Parses a function declaration.
 static void function(FunctionType type) {
     Compiler compiler;
-    initCompiler(&compiler, type);
+    initCompiler(&compiler, type, current->function->module);
     beginScope();
 
     consume(TOKEN_LPAREN, "Expect '(' after function name.");
@@ -618,15 +622,29 @@ static void function(FunctionType type) {
 }
 
 // Parses a top-level function declaration.
-static void funDeclaration() {
+static void importStatement() {
+    consume(TOKEN_STRING, "Expect module path string.");
+    // Emit the constant and then the import instruction.
+    Value modulePath = OBJ_VAL(copyString(parser.previous.start + 1, parser.previous.length - 2));
+    emitConstant(modulePath);
+    emitByte(OP_IMPORT);
+    consume(TOKEN_SEMICOLON, "Expect ';' after import statement.");
+}
+
+static void funDeclaration(bool isExport) {
     uint8_t global = parseVariable("Expect function name.");
     markInitialized();
     function(TYPE_FUNCTION);
     defineVariable(global);
+
+    if (isExport) {
+        emitBytes(OP_EXPORT, global);
+    }
 }
 
-// Parses a variable declaration.
-static void varDeclaration() {
+// ...
+
+static void varDeclaration(bool isExport) {
     uint8_t global = parseVariable("Expect variable name.");
 
     if (match(TOKEN_EQUAL)) {
@@ -634,9 +652,13 @@ static void varDeclaration() {
     } else {
         emitByte(OP_NIL);
     }
-    consume(TOKEN_SEMICOLON, "Expect ';' after variable value.");
+    consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
 
     defineVariable(global);
+
+    if (isExport) {
+        emitBytes(OP_EXPORT, global);
+    }
 }
 
 // Parses an expression statement.
@@ -653,7 +675,7 @@ static void forStatement() {
     if (match(TOKEN_SEMICOLON)) {
         // No initializer.
     } else if (match(TOKEN_VAR)) {
-        varDeclaration();
+        varDeclaration(false);
     } else {
         expressionStatement();
     }
@@ -771,6 +793,9 @@ static void synchronize() {
 }
 
 // Parses a statement.
+
+
+// Parses a statement.
 static void statement() {
     if (match(TOKEN_FOR)) {
         forStatement();
@@ -791,11 +816,21 @@ static void statement() {
 
 // Parses a declaration (variable or function).
 static void declaration() {
+    bool isExport = match(TOKEN_EXPORT);
+
     if (match(TOKEN_FUN)) {
-        funDeclaration();
+        funDeclaration(isExport);
     } else if (match(TOKEN_VAR)) {
-        varDeclaration();
+        varDeclaration(isExport);
+    } else if (match(TOKEN_IMPORT)) {
+        if (isExport) {
+            error("Cannot export an import statement.");
+        }
+        importStatement();
     } else {
+        if (isExport) {
+            error("Can only export function and variable declarations.");
+        }
         statement();
     }
 
@@ -803,10 +838,10 @@ static void declaration() {
 }
 
 // Main compilation function.
-ObjFunction* compile(const char* source) {
+ObjFunction* compile(const char* source, ObjModule* module) {
     initLexer(source);
     Compiler compiler;
-    initCompiler(&compiler, TYPE_SCRIPT);
+    initCompiler(&compiler, TYPE_SCRIPT, module);
 
     parser.hadError = false;
     parser.panicMode = false;
