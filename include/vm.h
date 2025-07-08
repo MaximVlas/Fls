@@ -48,5 +48,6 @@ Value pop();
 void runtimeError(const char* format, ...);
 void defineNative(const char* name, NativeFn function);
 void defineGlobal(const char* name, Value value);
+void resetStack();
 
 #endif

@@ -36,7 +36,13 @@ typedef struct {
     int line;
 } Token;
 
-void initLexer(const char* source);
-Token scanToken();
+typedef struct {
+    const char* start;
+    const char* current;
+    int line;
+} Lexer;
+
+void initLexer(Lexer* lexer, const char* source);
+Token scanToken(Lexer* lexer);
 
 #endif

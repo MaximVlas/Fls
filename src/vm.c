@@ -26,6 +26,7 @@ double fmod(double x, double y);
 #include "common.h"
 #include "compiler.h"
 #include "debug.h"
+#include "error.h"
 #include "memory.h"
 #include "object.h"
 #include "vm.h"
@@ -979,41 +980,20 @@ bool hasValidExtension(const char* filename, ObjList* extensions) {
 
 // --- VM Internals ---
 
-static void resetStack() {
+void resetStack() {
   vm.stackTop = vm.stack;
   vm.frameCount = 0;
 }
 
-void runtimeError(const char* format, ...) {
-  va_list args;
-  va_start(args, format);
-  vfprintf(stderr, format, args);
-  va_end(args);
-  fputs("\n", stderr);
-
-  vm.hadError = true;
-
-  for (int i = vm.frameCount - 1; i >= 0; i--) {
-    CallFrame* frame = &vm.frames[i];
-    ObjFunction* function = frame->function;
-    size_t instruction = frame->ip - function->chunk.code - 1;
-    ObjModule* module = function->module;
-    const char* moduleName = (module != NULL && module->name != NULL) ? module->name->chars : "<unknown>";
-    fprintf(stderr, "[%s:%d] in ", moduleName, function->chunk.lines[instruction]);
-    if (function->name == NULL) {
-      fprintf(stderr, "script\n");
-    } else {
-      fprintf(stderr, "%s()\n", function->name->chars);
-    }
-  }
-
-  resetStack();
-}
+// This function is now defined in error.c to be shared across the codebase.
+// We keep the declaration here to avoid modifying all native function calls.
+void runtimeError(const char* format, ...);
 
 void defineNative(const char* name, NativeFn function) {
   push(OBJ_VAL(copyString(name, (int)strlen(name))));
   push(OBJ_VAL(newNative(function)));
   tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+
   pop();
   pop();
 }

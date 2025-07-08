@@ -80,3 +80,16 @@ println("Files processed:    " + toString(files_processed));
 println("Total lines of code: " + toString(total_lines));
 println("Total characters:    " + toString(total_chars));
 println("-------------------------");
+
+
+
+// OUTPUT
+//
+//maxim@maxim-82k2:~/Documents/FishyC/Fls/examples$ ./fls ./1/code_analyzer.fls
+//Analyzed 74 files in /home/maxim/Documents/FishyC.
+//\n--- Analysis Complete ---
+//Files processed:    74
+//Total lines of code: 6662
+//Total characters:    191623
+//-------------------------
+//

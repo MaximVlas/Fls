@@ -20,3 +20,16 @@ println(result);
 println("Calculation took:");
 println(elapsedTime);
 println("seconds.");
+
+
+// OUTPUT
+
+//
+//maxim@maxim-82k2:~/Documents/FishyC/Fls/examples$ ./fls ./1/benchmark.fls
+//Running FLS benchmark...
+//FLS Benchmark Complete:
+//fib(35) is
+//9.22746e+06
+//Calculation took:
+//1.54747
+//seconds.

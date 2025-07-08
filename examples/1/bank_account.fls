@@ -38,3 +38,28 @@ println("---");
 
 withdraw(200);
 println("---");
+
+
+
+// OUTPUT
+
+//
+//maxim@maxim-82k2:~/Documents/FishyC/Fls/examples$ ./fls ./1/bank_account.fls
+//Welcome to FLS Bank!
+//Current balance:
+//100
+//---
+//Deposited:
+//50
+//Current balance:
+//150
+//---
+//Withdrew:
+//25
+//Current balance:
+//125
+//---
+//Error: Insufficient funds.
+//Current balance:
+//125
+//---

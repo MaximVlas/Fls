@@ -40,11 +40,41 @@ println("File content after append:");
 content = readFile(testFile);
 println(content);
 
-println("File exists: " + toString(fileExists(testFile)));
+println("File exists: " + toString( pathExists(testFile)));
 println("Is file: " + toString(isFile(testFile)));
 println("Is directory: " + toString(isDir(testFile)));
 println("File size: " + toString(fileSize(testFile)) + " bytes");
 
 println("Deleting file...");
 deleteFile(testFile);
-println("File exists after delete: " + toString(fileExists(testFile)));
+println("File exists after delete: " + toString(pathExists(testFile)));
+
+// OUTPUT
+
+//
+//maxim@maxim-82k2:~/Documents/FishyC/Fls/examples$ ./fls ./1/feature_test.fls
+//--- Testing Map Data Structure ---
+//Initial map:
+//<map>
+//\n
+//Get 'name': Fls Language
+//Get 'version': 1
+//Deleting 'stable'...
+//Map after deletion:
+//<map>
+//\n
+//--- Testing File I/O Operations ---
+//Writing to test_file.txt
+//File content:
+//Hello, Fls!
+//Appending to file...
+//File content after append:
+//Hello, Fls!
+//This is a new line.
+//File exists: true
+//Is file: true
+//Is directory: false
+//File size: 22 bytes
+//Deleting file...
+//File exists after delete: false
+//

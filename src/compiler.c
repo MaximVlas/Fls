@@ -7,6 +7,7 @@
 #include "memory.h"
 #include "lexer.h"
 #include "object.h"
+#include "error.h"
 
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
@@ -14,8 +15,10 @@
 
 // Parser structure to hold state during compilation.
 typedef struct {
+    Lexer* lexer;
     Token current;
     Token previous;
+    ObjModule* module;
     bool hadError;
     bool panicMode;
 } Parser;
@@ -80,17 +83,31 @@ static Chunk* currentChunk() {
 static void errorAt(Token* token, const char* message) {
     if (parser.panicMode) return;
     parser.panicMode = true;
-    fprintf(stderr, "[line %d] Error", token->line);
 
-    if (token->type == TOKEN_EOF) {
-        fprintf(stderr, " at end");
-    } else if (token->type == TOKEN_ERROR) {
-        // Nothing.
-    } else {
-        fprintf(stderr, " at '%.*s'", token->length, token->start);
+    const char* lineStart = token->start;
+    while (lineStart > parser.lexer->start && *(lineStart - 1) != '\n') {
+        lineStart--;
     }
 
-    fprintf(stderr, ": %s\n", message);
+    const char* lineEnd = token->start;
+    while (*lineEnd != '\0' && *lineEnd != '\n') {
+        lineEnd++;
+    }
+
+    int col = (int)(token->start - lineStart) + 1;
+    int lineLength = (int)(lineEnd - lineStart);
+    char* lineStr = (char*)malloc(lineLength + 1);
+    if (lineStr == NULL) {
+        fprintf(stderr, "Memory allocation failed in error reporting.\n");
+        exit(1);
+    }
+    memcpy(lineStr, lineStart, lineLength);
+    lineStr[lineLength] = '\0';
+
+    const char* moduleName = parser.module->name != NULL ? parser.module->name->chars : "<script>";
+    reportError(true, moduleName, token->line, lineStr, col, token->length, message);
+
+    free(lineStr);
     parser.hadError = true;
 }
 
@@ -109,7 +126,7 @@ static void advance() {
     parser.previous = parser.current;
 
     for (;;) {
-        parser.current = scanToken();
+        parser.current = scanToken(parser.lexer);
         if (parser.current.type != TOKEN_ERROR) break;
 
         errorAtCurrent(parser.current.start);
@@ -839,7 +856,11 @@ static void declaration() {
 
 // Main compilation function.
 ObjFunction* compile(const char* source, ObjModule* module) {
-    initLexer(source);
+    Lexer lexer;
+    initLexer(&lexer, source);
+    parser.lexer = &lexer;
+    parser.module = module;
+
     Compiler compiler;
     initCompiler(&compiler, TYPE_SCRIPT, module);
 

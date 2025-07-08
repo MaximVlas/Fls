@@ -15,6 +15,7 @@ sources = [
     "src/table.c",
     "src/lexer.c",
     "src/compiler.c",
+    "src/error.c",
     "src/vm.c",
     "std/src/io.c",
     "std/src/math.c",

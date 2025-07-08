@@ -11,3 +11,14 @@ println ("Done counting!");
 println ("The loop took:");
 println (elapsedTime);
 println ("seconds.");
+
+
+// OUTPUT
+
+//
+//maxim@maxim-82k2:~/Documents/FishyC/Fls/examples$ ./fls ./1/counting.fls
+//Done counting!
+//The loop took:
+//2.64893
+//seconds.
+//

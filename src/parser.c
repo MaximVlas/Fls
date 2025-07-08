@@ -4,7 +4,8 @@
 
 #include "common.h"
 #include "parser.h"
-#include "memory.h"
+#include "expr.h"
+#include "error.h"
 #include "object.h"
 
 typedef struct {
@@ -53,17 +54,30 @@ static Stmt* block();
 
 static void errorAt(Token* token, const char* message) {
     if (parser.panicMode) return;
-    parser.panicMode = 1;
-    fprintf(stderr, "[line %d] Error", token->line);
+    parser.panicMode = true;
 
-    if (token->type == TOKEN_EOF) {
-        fprintf(stderr, " at end");
-    } else if (token->type != TOKEN_ERROR) {
-        fprintf(stderr, " at '%.*s'", token->length, token->start);
+    const char* lineStart = token->start;
+    while (lineStart > parser.source && *lineStart != '\n') {
+        lineStart--;
+    }
+    if (*lineStart == '\n') {
+        lineStart++;
     }
 
-    fprintf(stderr, ": %s\n", message);
-    parser.hadError = 1;
+    const char* lineEnd = token->start;
+    while (*lineEnd != '\0' && *lineEnd != '\n') {
+        lineEnd++;
+    }
+
+    int col = (int)(token->start - lineStart) + 1;
+    int lineLength = (int)(lineEnd - lineStart);
+    char* lineStr = (char*)malloc(lineLength + 1);
+    memcpy(lineStr, lineStart, lineLength);
+    lineStr[lineLength] = '\0';
+
+    reportError(true, parser.module->name->chars, token->line, lineStr, col, token->length, message);
+    free(lineStr);
+    parser.hadError = true;
 }
 
 static void error(const char* message) { errorAt(&parser.previous, message); }
